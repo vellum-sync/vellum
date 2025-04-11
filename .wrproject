@@ -1,0 +1,12 @@
+default = "dev"
+
+[crates.dev]
+  image = "rust:1.86.0-alpine"
+  volumes = ["/tmp:/tmp"]
+  network = "host"
+  shell = "/bin/sh"
+  export-bin = [
+    "/usr/local/bin/*",
+    "/usr/cargo/bin/*",
+    "/usr/local/cargo/bin/*",
+  ]
