@@ -1,4 +1,6 @@
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
+
+mod server;
 
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
     .header(clap_cargo::style::HEADER)
@@ -19,21 +21,33 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// store a shell command in the history
+    /// Store a shell command in the history
     Store{
         /// the shell command to be stored
         shell_command: String,
     },
 
-    /// list all the stored commands
+    /// List all the stored commands
     History,
+
+    /// Run the background history management server
+    Server(ServerArgs),
+}
+
+#[derive(Args, Debug)]
+struct ServerArgs {
+    /// Server configuration file
+    #[arg(short, long, value_name = "FILE")]
+    config: Option<String>,
+
 }
 
 fn main() {
     let cli = Cli::parse();
 
-    match &cli.command {
+    match cli.command {
         Commands::Store{shell_command: command} => println!("store: {command}"),
         Commands::History => println!("history"),
+        Commands::Server(args) => server::run(args.config),
     }
 }
