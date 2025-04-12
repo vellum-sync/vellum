@@ -1,30 +1,54 @@
-use std::{fmt::Display, fs, io};
-use toml;
 use serde::Deserialize;
+use std::{fmt::Display, fs, io, path::PathBuf};
+use toml;
+use xdg::BaseDirectories;
 
 pub type Result = std::result::Result<Config, Error>;
 
 #[derive(Deserialize, Debug)]
-pub struct Config {}
+pub struct Config {
+    #[serde(skip)]
+    pub path: Option<String>,
+
+    #[serde(default)]
+    pub state_dir: PathBuf,
+}
 
 impl Config {
     pub fn load<S: Into<String>>(config: Option<S>) -> Result {
         match config {
             Some(path) => Self::open(path.into()),
-            None => Ok(Self::default()),
+            None => Self::open_default(),
         }
     }
 
     fn open(path: String) -> Result {
         let data = fs::read_to_string(&path)?;
 
-        Ok(toml::from_str(&data)?)
+        let mut cfg: Config = toml::from_str(&data)?;
+        cfg.path = Some(path);
+
+        Ok(cfg)
+    }
+
+    fn open_default() -> Result {
+        // TODO(jp3): this should be trying to load from
+        // ~/.config/vellum/config.toml, and only returning default if that file
+        // doesn't exist.
+        Ok(Self::default())
     }
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self{}
+        let dirs = match BaseDirectories::with_prefix("vellum") {
+            Ok(d) => d,
+            Err(e) => panic!("failed to load XDG directories: {e}"),
+        };
+        Self {
+            path: None,
+            state_dir: dirs.get_state_home(),
+        }
     }
 }
 

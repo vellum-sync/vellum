@@ -166,6 +166,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "fork"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05dc8b302e04a1c27f4fe694439ef0f29779ca4edc205b7b58f00db04e29656d"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -446,9 +455,11 @@ dependencies = [
  "clap",
  "clap-cargo",
  "env_logger",
+ "fork",
  "log",
  "serde",
  "toml",
+ "xdg",
 ]
 
 [[package]]
@@ -531,4 +542,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63d3fcd9bba44b03821e7d699eeee959f3126dcc4aa8e4ae18ec617c2a5cea10"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "xdg"
+version = "2.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "213b7324336b53d2414b2db8537e56544d981803139155afa84f76eeebb7a546"
+dependencies = [
+ "serde",
 ]

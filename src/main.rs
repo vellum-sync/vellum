@@ -1,6 +1,7 @@
-use std::process::exit;
+use std::{env, fs, io, path::Path, process::exit};
 
 use clap::{Parser, Subcommand};
+use env_logger::Target;
 use log::error;
 
 mod config;
@@ -30,7 +31,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Store a shell command in the history
-    Store{
+    Store {
         /// the shell command to be stored
         shell_command: String,
     },
@@ -42,8 +43,25 @@ enum Commands {
     Server(server::Args),
 }
 
+fn create_log_file(log_file: &str) -> io::Result<fs::File> {
+    fs::create_dir_all(Path::new(log_file).parent().unwrap())?;
+    fs::File::options().append(true).create(true).open(log_file)
+}
+
+fn log_target() -> Target {
+    if let Ok(log_file) = env::var("VELLUM_LOG_FILE") {
+        return match create_log_file(&log_file) {
+            Ok(f) => Target::Pipe(Box::new(f)),
+            Err(e) => panic!("Failed to open log file {log_file}: {e}"),
+        };
+    }
+    Target::Stderr
+}
+
 fn main() {
-    env_logger::init();
+    env_logger::Builder::from_env("VELLUM_LOG")
+        .target(log_target())
+        .init();
 
     let cli = Cli::parse();
 
@@ -55,9 +73,14 @@ fn main() {
         }
     };
 
-    match cli.command {
-        Commands::Store{shell_command: command} => println!("store: {command}"),
-        Commands::History => println!("history"),
+    if let Err(e) = match cli.command {
+        Commands::Store {
+            shell_command: command,
+        } => Ok(println!("store: {command}")),
+        Commands::History => Ok(println!("history")),
         Commands::Server(args) => server::run(&config, args),
+    } {
+        error!("{e}");
+        exit(1);
     }
 }
