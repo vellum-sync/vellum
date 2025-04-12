@@ -7,3 +7,7 @@ description = "Records the history of commands run"
 [dependencies]
 clap = { version = "4.5.35", features = ["derive", "unicode", "wrap_help"] }
 clap-cargo = "0.15.2"
+env_logger = "0.11.8"
+log = { version = "0.4.27", features = ["std", "serde"] }
+serde = { version = "1.0.219", features = ["derive"] }
+toml = "0.8.20"

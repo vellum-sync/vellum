@@ -1,5 +1,9 @@
-use clap::{Args, Parser, Subcommand};
+use std::process::exit;
 
+use clap::{Parser, Subcommand};
+use log::error;
+
+mod config;
 mod server;
 
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
@@ -15,6 +19,10 @@ pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling:
 #[command(version, about, long_about = None)]
 #[command(styles = CLAP_STYLING)]
 struct Cli {
+    /// Path to configuration file
+    #[arg(short, long, value_name = "FILE")]
+    config: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -31,23 +39,25 @@ enum Commands {
     History,
 
     /// Run the background history management server
-    Server(ServerArgs),
-}
-
-#[derive(Args, Debug)]
-struct ServerArgs {
-    /// Server configuration file
-    #[arg(short, long, value_name = "FILE")]
-    config: Option<String>,
-
+    Server(server::Args),
 }
 
 fn main() {
+    env_logger::init();
+
     let cli = Cli::parse();
+
+    let config = match config::Config::load(cli.config.as_ref()) {
+        Ok(c) => c,
+        Err(e) => {
+            error!("Failed to load config: {e}");
+            exit(1);
+        }
+    };
 
     match cli.command {
         Commands::Store{shell_command: command} => println!("store: {command}"),
         Commands::History => println!("history"),
-        Commands::Server(args) => server::run(args.config),
+        Commands::Server(args) => server::run(&config, args),
     }
 }
