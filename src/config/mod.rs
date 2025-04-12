@@ -1,14 +1,18 @@
 use serde::Deserialize;
-use std::{fmt::Display, fs, io, path::PathBuf};
+use std::{
+    fmt::Display,
+    fs, io,
+    path::{Path, PathBuf},
+};
 use toml;
-use xdg::BaseDirectories;
+use xdg::{BaseDirectories, BaseDirectoriesError};
 
 pub type Result = std::result::Result<Config, Error>;
 
 #[derive(Deserialize, Debug)]
 pub struct Config {
     #[serde(skip)]
-    pub path: Option<String>,
+    pub path: Option<PathBuf>,
 
     #[serde(default)]
     pub state_dir: PathBuf,
@@ -22,20 +26,24 @@ impl Config {
         }
     }
 
-    fn open(path: String) -> Result {
-        let data = fs::read_to_string(&path)?;
+    fn open<P: AsRef<Path>>(path: P) -> Result {
+        let p = path.as_ref();
+
+        let data = fs::read_to_string(p)?;
 
         let mut cfg: Config = toml::from_str(&data)?;
-        cfg.path = Some(path);
+        cfg.path = Some(p.to_path_buf());
 
         Ok(cfg)
     }
 
     fn open_default() -> Result {
-        // TODO(jp3): this should be trying to load from
-        // ~/.config/vellum/config.toml, and only returning default if that file
-        // doesn't exist.
-        Ok(Self::default())
+        let dirs = BaseDirectories::with_prefix("vellum")?;
+
+        match dirs.find_config_file("config.toml") {
+            Some(path) => Self::open(path),
+            None => Ok(Self::default()),
+        }
     }
 }
 
@@ -56,6 +64,7 @@ impl Default for Config {
 pub enum Error {
     Read(io::Error),
     Parse(toml::de::Error),
+    Lookup(BaseDirectoriesError),
 }
 
 impl Display for Error {
@@ -63,6 +72,7 @@ impl Display for Error {
         match self {
             Self::Read(e) => write!(f, "READ ERROR: {e}"),
             Self::Parse(e) => write!(f, "PARSE ERROR: {e}"),
+            Self::Lookup(e) => write!(f, "LOOKUP ERROR: {e}"),
         }
     }
 }
@@ -76,5 +86,11 @@ impl From<io::Error> for Error {
 impl From<toml::de::Error> for Error {
     fn from(value: toml::de::Error) -> Self {
         Self::Parse(value)
+    }
+}
+
+impl From<BaseDirectoriesError> for Error {
+    fn from(value: BaseDirectoriesError) -> Self {
+        Self::Lookup(value)
     }
 }

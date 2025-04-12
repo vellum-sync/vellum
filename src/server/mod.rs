@@ -64,7 +64,7 @@ fn background(config: &Config, _args: Args) {
     let exe = current_exe().expect("failed to get executable path");
     let mut cmd = Command::new(exe);
     if let Some(cfg) = config.path.as_ref() {
-        cmd.args(["--config", cfg]);
+        cmd.arg("--config").arg(cfg);
     };
     let _ = cmd
         .args(["server", "--foreground"])
