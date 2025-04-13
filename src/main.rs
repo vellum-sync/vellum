@@ -9,6 +9,7 @@ mod client;
 mod config;
 mod error;
 mod server;
+mod sync;
 
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
     .header(clap_cargo::style::HEADER)
@@ -44,6 +45,13 @@ enum Commands {
 
     /// Display the vellum configuration
     Config,
+
+    /// Request the server sync the history immediately
+    Sync {
+        /// Force a sync, even if things seem to be up-to-date
+        #[arg(short, long)]
+        force: bool,
+    },
 
     /// Run the background history management server
     Server(server::Args),
@@ -83,6 +91,7 @@ fn main() {
         Commands::Store { shell_command } => client::store(&config, shell_command),
         Commands::History => client::history(&config),
         Commands::Config => config.show(),
+        Commands::Sync { force } => client::sync(&config, force),
         Commands::Server(args) => server::run(&config, args),
     } {
         error!("{e}");

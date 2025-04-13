@@ -18,3 +18,8 @@ pub fn history(cfg: &Config) -> Result<()> {
     }
     Ok(())
 }
+
+pub fn sync(cfg: &Config, force: bool) -> Result<()> {
+    let mut conn = Connection::new(cfg)?;
+    conn.sync(force)
+}

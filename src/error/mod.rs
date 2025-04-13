@@ -11,6 +11,7 @@ pub enum Error {
     Format(toml::ser::Error),
     Lookup(BaseDirectoriesError),
     Generic(String),
+    Git(git2::Error),
 }
 
 impl Display for Error {
@@ -23,6 +24,7 @@ impl Display for Error {
             Self::Format(e) => write!(f, "FORMAT ERROR: {e}"),
             Self::Lookup(e) => write!(f, "LOOKUP ERROR: {e}"),
             Self::Generic(s) => write!(f, "{s}"),
+            Self::Git(e) => write!(f, "GIT ERROR: {e}"),
         }
     }
 }
@@ -37,6 +39,7 @@ impl error::Error for Error {
             Self::Format(e) => Some(e),
             Self::Lookup(e) => Some(e),
             Self::Generic(_) => None,
+            Self::Git(e) => Some(e),
         }
     }
 }
@@ -74,6 +77,12 @@ impl From<toml::ser::Error> for Error {
 impl From<BaseDirectoriesError> for Error {
     fn from(value: BaseDirectoriesError) -> Self {
         Self::Lookup(value)
+    }
+}
+
+impl From<git2::Error> for Error {
+    fn from(value: git2::Error) -> Self {
+        Self::Git(value)
     }
 }
 

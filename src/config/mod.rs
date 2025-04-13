@@ -20,6 +20,19 @@ pub struct Config {
 
     #[serde(default = "default_hostname")]
     pub hostname: PathBuf,
+
+    pub sync: Sync,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Sync {
+    #[serde(default = "default_sync_enabled")]
+    pub enabled: bool,
+
+    pub url: String,
+
+    #[serde(default = "default_sync_path")]
+    path: PathBuf,
 }
 
 impl Config {
@@ -55,6 +68,10 @@ impl Config {
         print!("{cfg}");
         Ok(())
     }
+
+    pub fn sync_path(&self) -> PathBuf {
+        Path::new(&self.state_dir).join(&self.sync.path)
+    }
 }
 
 impl Default for Config {
@@ -63,6 +80,17 @@ impl Default for Config {
             path: None,
             state_dir: default_state_dir(),
             hostname: default_hostname(),
+            sync: Sync::default(),
+        }
+    }
+}
+
+impl Default for Sync {
+    fn default() -> Self {
+        Self {
+            enabled: default_sync_enabled(),
+            url: "".to_string(),
+            path: default_sync_path(),
         }
     }
 }
@@ -79,4 +107,12 @@ fn default_hostname() -> PathBuf {
         Ok(h) => h.into(),
         Err(e) => panic!("failed to get hostname: {e}"),
     }
+}
+
+fn default_sync_enabled() -> bool {
+    true
+}
+
+fn default_sync_path() -> PathBuf {
+    Path::new("sync").into()
 }

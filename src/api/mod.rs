@@ -77,6 +77,15 @@ impl Connection {
         self.send(&msg)
     }
 
+    pub fn sync(&mut self, force: bool) -> Result<()> {
+        let msg = Message::Sync(force);
+        match self.request(&msg)? {
+            Message::Ack => Ok(()),
+            Message::Error(e) => Err(Error::Generic(e)),
+            m => Err(Error::Generic(format!("unexpected response: {m:?}"))),
+        }
+    }
+
     pub fn exit(&mut self) -> Result<()> {
         let msg = Message::Exit;
         match self.request(&msg)? {
@@ -158,5 +167,6 @@ pub enum Message {
     Error(String),
     HistoryRequest,
     History(Vec<String>),
+    Sync(bool),
     Exit,
 }

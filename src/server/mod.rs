@@ -1,4 +1,6 @@
 use std::{
+    cmp::Ordering,
+    collections::HashMap,
     env::current_exe,
     os::unix::process::CommandExt,
     path::Path,
@@ -11,12 +13,14 @@ use chrono::{DateTime, Utc};
 use clap;
 use fork::{Fork, daemon};
 use log::{debug, error, info};
+use serde::{Deserialize, Serialize};
 
 use crate::{
     api::{Connection, Listener, Message},
     client,
     config::Config,
     error::Result,
+    sync::{Syncer, Version, get_syncer},
 };
 
 #[derive(clap::Args, Debug, Default)]
@@ -65,7 +69,7 @@ fn background(config: &Config) {
         .exec();
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 struct Entry {
     ts: DateTime<Utc>,
     host: String,
@@ -79,16 +83,81 @@ impl Entry {
     }
 }
 
+impl Ord for Entry {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.ts
+            .cmp(&other.ts)
+            .then(self.host.cmp(&other.host))
+            .then(self.cmd.cmp(&other.cmd))
+    }
+}
+
+impl PartialOrd for Entry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 #[derive(Debug)]
-struct State {
+struct ExternalHistory {
+    latest: Version,
     history: Vec<Entry>,
 }
 
+impl ExternalHistory {
+    fn version(&self, force: bool) -> Option<&Version> {
+        if force { None } else { Some(&self.latest) }
+    }
+}
+
+#[derive(Debug)]
+struct State {
+    host: String,
+    changed: bool,
+    history: Vec<Entry>,
+    external: HashMap<String, ExternalHistory>,
+    syncer: Box<dyn Syncer>,
+}
+
 impl State {
-    fn new() -> Self {
+    fn new(host: String, syncer: Box<dyn Syncer>) -> Self {
         Self {
+            host,
+            changed: false,
             history: Vec::new(),
+            external: HashMap::new(),
+            syncer,
         }
+    }
+
+    fn combined_history(&self) -> Vec<Entry> {
+        let mut combined = self.history.clone();
+        for (_, external) in self.external.iter() {
+            combined.extend_from_slice(&external.history);
+        }
+        combined.sort_unstable();
+        combined
+    }
+
+    fn store(&mut self, host: String, cmd: String) {
+        self.history.push(Entry::new(host, cmd));
+        self.changed = true
+    }
+
+    fn sync(&mut self, force: bool) -> Result<()> {
+        if self.changed || force {
+            let data = serde_json::to_vec(&self.history)?;
+            self.syncer.store(&self.host, &data)?;
+        }
+        for (host, external) in self.external.iter_mut() {
+            if let Some(data) = self.syncer.get_newer(&host, external.version(force))? {
+                let history: Vec<Entry> = serde_json::from_slice(&data.data)?;
+                external.latest = data.version;
+                external.history = history;
+            }
+        }
+        // TODO(jp3): How do we learn about new hosts, or ones that have gone?
+        Ok(())
     }
 }
 
@@ -103,9 +172,12 @@ impl Server {
         let pid = process::id();
         debug!("server: config={cfg:?} pid={pid}");
 
+        let host = cfg.hostname.to_string_lossy().to_string();
+        let syncer = get_syncer(cfg)?;
+
         Ok(Self {
             cfg: cfg.clone(),
-            state: Arc::new(Mutex::new(State::new())),
+            state: Arc::new(Mutex::new(State::new(host, syncer))),
         })
     }
 
@@ -154,7 +226,7 @@ impl Server {
                 info!("Received history request");
                 let history = self.history();
                 if let Err(e) = conn.send_history(history) {
-                    error!("Failed to send ack: {e}");
+                    error!("Failed to send history: {e}");
                 };
             }
             Message::Exit => {
@@ -168,6 +240,17 @@ impl Server {
                 debug!("Exiting ...");
                 exit(0);
             }
+            Message::Sync(force) => {
+                info!("Received request to sync");
+                if let Err(e) = self.sync(force) {
+                    error!("Failed to sync: {e}");
+                    if let Err(e) = conn.error(format!("failed to sync: {e}")) {
+                        error!("Failed to send error: {e}");
+                    }
+                } else if let Err(e) = conn.ack() {
+                    error!("Failed to send ack: {e}");
+                };
+            }
             r => {
                 error!("received unknown request: {r:?}");
                 if let Err(e) = conn.error(format!("unknown request: {r:?}")) {
@@ -179,14 +262,20 @@ impl Server {
 
     fn store(&self, cmd: String) {
         let mut state = self.state.lock().unwrap();
-        state.history.push(Entry::new(
-            self.cfg.hostname.to_string_lossy().to_string(),
-            cmd,
-        ));
+        state.store(self.cfg.hostname.to_string_lossy().to_string(), cmd);
     }
 
     fn history(&self) -> Vec<String> {
         let state = self.state.lock().unwrap();
-        state.history.iter().map(|e| e.cmd.clone()).collect()
+        state
+            .combined_history()
+            .iter()
+            .map(|e| e.cmd.clone())
+            .collect()
+    }
+
+    fn sync(&self, force: bool) -> Result<()> {
+        let mut state = self.state.lock().unwrap();
+        state.sync(force)
     }
 }
