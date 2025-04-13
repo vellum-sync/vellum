@@ -109,16 +109,17 @@ impl<'a> Iterator for Requests<'a> {
     }
 }
 
-pub struct Server {
+#[derive(Debug)]
+pub struct Listener {
     l: UnixListener,
 }
 
-impl Server {
+impl Listener {
     pub fn new(cfg: &Config) -> Result<Self> {
         let path = Path::new(&cfg.state_dir).join("server.sock");
         debug!("Start listening: {path:#?}");
         let listener = UnixListener::bind(path)?;
-        Ok(Server { l: listener })
+        Ok(Listener { l: listener })
     }
 
     pub fn incoming(&self) -> Incoming<'_> {
