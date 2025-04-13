@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    fs::{self, File, exists},
+    fs::{self, File, exists, read_dir},
     io::{Read, Write},
     path::{Path, PathBuf},
 };
@@ -136,6 +136,18 @@ impl Syncer for Git {
     }
 
     fn get_external_hosts(&self, host: &str) -> Result<Vec<String>> {
-        panic!("not implemented")
+        self.pull()?;
+
+        let mut hosts = Vec::new();
+        let path = Path::new(&self.path).join("hosts");
+
+        for entry in read_dir(&path)? {
+            let entry = entry?;
+            if !entry.path().is_dir() && entry.file_name() != host {
+                hosts.push(entry.file_name().to_string_lossy().to_string());
+            }
+        }
+
+        Ok(hosts)
     }
 }
