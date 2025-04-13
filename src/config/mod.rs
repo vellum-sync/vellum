@@ -15,8 +15,11 @@ pub struct Config {
     #[serde(skip)]
     pub path: Option<PathBuf>,
 
-    #[serde(default)]
+    #[serde(default = "default_state_dir")]
     pub state_dir: PathBuf,
+
+    #[serde(default = "default_hostname")]
+    pub hostname: PathBuf,
 }
 
 impl Config {
@@ -56,13 +59,24 @@ impl Config {
 
 impl Default for Config {
     fn default() -> Self {
-        let dirs = match BaseDirectories::with_prefix("vellum") {
-            Ok(d) => d,
-            Err(e) => panic!("failed to load XDG directories: {e}"),
-        };
         Self {
             path: None,
-            state_dir: dirs.get_state_home(),
+            state_dir: default_state_dir(),
+            hostname: default_hostname(),
         }
+    }
+}
+
+fn default_state_dir() -> PathBuf {
+    match BaseDirectories::with_prefix("vellum") {
+        Ok(d) => d.get_state_home(),
+        Err(e) => panic!("failed to load XDG directories: {e}"),
+    }
+}
+
+fn default_hostname() -> PathBuf {
+    match hostname::get() {
+        Ok(h) => h.into(),
+        Err(e) => panic!("failed to get hostname: {e}"),
     }
 }
