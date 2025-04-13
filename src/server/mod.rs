@@ -13,6 +13,7 @@ use log::{debug, error, info};
 
 use crate::{
     api::{Connection, Server},
+    client,
     config::Config,
     error::Error,
 };
@@ -22,10 +23,16 @@ pub struct Args {
     /// Run the server in the foreground
     #[arg(short, long)]
     foreground: bool,
+
+    /// Stop the current server, instead of starting a new one
+    #[arg(short, long)]
+    stop: bool,
 }
 
 pub fn run(config: &Config, args: Args) -> Result<(), Error> {
-    if args.foreground {
+    if args.stop {
+        client::stop_server(config)
+    } else if args.foreground {
         start(config, args)
     } else if let Fork::Child = daemon(false, false)? {
         background(config, args);
