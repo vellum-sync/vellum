@@ -1,11 +1,11 @@
 use std::{
     fmt,
-    fs::{File, exists},
+    fs::{self, File, exists},
     io::Write,
     path::{Path, PathBuf},
 };
 
-use git2::{Oid, Repository};
+use git2::{Commit, ErrorCode, Oid, Repository};
 use log::debug;
 
 use crate::{config::Config, error::Result};
@@ -53,6 +53,22 @@ impl Sync {
             repo,
         })
     }
+
+    fn tip(&self) -> Result<Option<Commit>> {
+        let oid = match self.repo.head() {
+            Ok(head) => head.target(),
+            Err(e) => {
+                if e.code() == ErrorCode::NotFound {
+                    return Ok(None);
+                }
+                return Err(e.into());
+            }
+        };
+        Ok(match oid {
+            Some(id) => Some(self.repo.find_commit(id)?),
+            None => None,
+        })
+    }
 }
 
 impl fmt::Debug for Sync {
@@ -63,7 +79,42 @@ impl fmt::Debug for Sync {
 
 impl Syncer for Sync {
     fn store(&self, host: &str, data: &[u8]) -> Result<()> {
-        // TODO(jp3): implement this
+        // TODO(jp3): need to start with `pull -r`
+        let mut index = self.repo.index()?;
+        let target = Path::new("hosts").join(host);
+        let path = Path::new(&self.path).join(&target);
+        fs::create_dir_all(path.parent().unwrap())?;
+        {
+            // write contents to file, and make sure it's on disk before calling
+            // add_path.
+            let mut f = File::create(&path)?;
+            f.write_all(data)?;
+            f.flush()?;
+        }
+        index.add_path(&target)?;
+        index.write()?;
+        let tree = self.repo.find_tree(index.write_tree()?)?;
+        let author = self.repo.signature()?;
+        let mut parents = Vec::with_capacity(1);
+        let tip = self.tip()?;
+        if let Some(tip) = tip.as_ref() {
+            debug!("tree: {:?}, tip: {:?}", tree.id(), tip.tree_id());
+            if tree.id() == tip.tree_id() {
+                // nothing has changed, so don't create a new commit.
+                return Ok(());
+            }
+            parents.push(tip);
+        }
+        let commit = self.repo.commit(
+            Some("HEAD"),
+            &author,
+            &author,
+            &format!("update {host}"),
+            &tree,
+            &parents,
+        )?;
+        debug!("Created commit {commit:?}");
+        // TODO(jp3): now need to push the commit.
         Ok(())
     }
 
