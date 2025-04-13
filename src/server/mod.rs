@@ -120,14 +120,24 @@ struct State {
 }
 
 impl State {
-    fn new(host: String, syncer: Box<dyn Syncer>) -> Self {
-        Self {
+    fn new(host: String, syncer: Box<dyn Syncer>) -> Result<Self> {
+        let mut s = Self {
             host,
             changed: false,
             history: Vec::new(),
             external: HashMap::new(),
             syncer,
+        };
+        s.load()?;
+        Ok(s)
+    }
+
+    fn load(&mut self) -> Result<()> {
+        if let Some(data) = self.syncer.get_newer(&self.host, None)? {
+            self.history = serde_json::from_slice(&data.data)?;
         }
+        // TODO(jp3): load the external data from the Syncer too
+        Ok(())
     }
 
     fn combined_history(&self) -> Vec<Entry> {
@@ -177,7 +187,7 @@ impl Server {
 
         Ok(Self {
             cfg: cfg.clone(),
-            state: Arc::new(Mutex::new(State::new(host, syncer))),
+            state: Arc::new(Mutex::new(State::new(host, syncer)?)),
         })
     }
 

@@ -1,7 +1,7 @@
 use std::{
     fmt,
     fs::{self, File, exists},
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
 };
 
@@ -119,8 +119,23 @@ impl Syncer for Sync {
     }
 
     fn get_newer(&self, host: &str, ver: Option<&Version>) -> Result<Option<Data>> {
-        // TODO(jp3): implement this
-        Ok(None)
+        // TODO(jp3): need to start with `pull -r`
+        let target = Path::new("hosts").join(host);
+        let path = Path::new(&self.path).join(&target);
+        if !exists(&path)? {
+            // there is no history for the specified host currently.
+            return Ok(None);
+        }
+        // TODO(jp3): need to get the last modified version of the file
+        let version = Version { oid: Oid::zero() };
+        if let Some(prev) = ver {
+            // TODO(jp3): we should check to see if the file has changed since
+            // prev, and return None if not ...
+        }
+        let mut data = Vec::new();
+        let mut f = File::open(&path)?;
+        f.read_to_end(&mut data)?;
+        Ok(Some(Data { version, data }))
     }
 }
 
