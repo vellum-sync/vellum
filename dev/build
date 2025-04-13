@@ -1,0 +1,8 @@
+#!/bin/sh
+
+readonly RUST_VERSION="1.86.0"
+readonly IMAGE_REV="1"
+
+cd "$(dirname "$0")"
+
+exec docker buildx build --platform linux/amd64,linux/arm64 --build-arg "RUST_VERSION=${RUST_VERSION}" --pull -t "git.qur.me/qur/vellum:${RUST_VERSION}-${IMAGE_REV}" -f Dockerfile --push .

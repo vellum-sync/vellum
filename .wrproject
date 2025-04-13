@@ -1,7 +1,7 @@
 default = "dev"
 
 [crates.dev]
-  image = "rust:1.86.0-alpine"
+  image = "git.qur.me/qur/vellum:1.86.0-1"
   volumes = ["/tmp:/tmp"]
   network = "host"
   shell = "/bin/sh"
