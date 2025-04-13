@@ -79,6 +79,16 @@ impl Connection {
             m => Err(Error::Generic(format!("unexpected response: {m:?}"))),
         }
     }
+
+    pub fn ack(&mut self) -> Result<()> {
+        let msg = Message::Ack;
+        self.send(&msg)
+    }
+
+    pub fn error(&mut self, msg: String) -> Result<()> {
+        let msg = Message::Error(msg);
+        self.send(&msg)
+    }
 }
 
 pub struct Requests<'a> {

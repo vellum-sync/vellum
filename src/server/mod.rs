@@ -12,7 +12,7 @@ use fork::{Fork, daemon};
 use log::{debug, error, info};
 
 use crate::{
-    api::{Connection, Server},
+    api::{Connection, Message, Server},
     client,
     config::Config,
     error::Error,
@@ -65,16 +65,44 @@ fn start(config: &Config, args: Args) -> Result<(), Error> {
     Ok(())
 }
 
-fn handle_client(mut conn: Connection, _config: Config) {
-    for request in conn.requests() {
-        match request {
+fn handle_client(mut conn: Connection, config: Config) {
+    loop {
+        match conn.receive() {
             Ok(req) => {
                 info!("got request: {req:?}");
+                handle_request(req, &mut conn, &config);
             }
             Err(e) => {
                 error!("error getting next request: {e}");
                 return;
             }
+        }
+    }
+}
+
+fn handle_request(req: Message, conn: &mut Connection, _cfg: &Config) {
+    match req {
+        Message::Store(cmd) => {
+            info!("Recevied request to store command: {cmd}");
+            if let Err(e) = conn.ack() {
+                error!("Failed to send ack: {e}");
+            };
+        }
+        Message::HistoryRequest => {
+            info!("Received history request");
+        }
+        Message::Exit => {
+            info!("Received request to exit");
+            if let Err(e) = conn.ack() {
+                error!("Failed to send ack: {e}");
+            };
+            exit(0);
+        }
+        r => {
+            error!("received unknown request: {r:?}");
+            if let Err(e) = conn.error(format!("unknown request: {r:?}")) {
+                error!("Failed to send ack: {e}");
+            };
         }
     }
 }
