@@ -129,7 +129,17 @@ impl State {
         if let Some(data) = self.syncer.get_newer(&self.host, None)? {
             self.history = serde_json::from_slice(&data.data)?;
         }
-        // TODO(jp3): load the external data from the Syncer too
+
+        for host in self.syncer.get_external_hosts(&self.host)? {
+            if let Some(data) = self.syncer.get_newer(&host, None)? {
+                let history = ExternalHistory {
+                    latest: data.version,
+                    history: serde_json::from_slice(&data.data)?,
+                };
+                self.external.insert(host, history);
+            }
+        }
+
         Ok(())
     }
 
