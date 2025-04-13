@@ -147,11 +147,16 @@ impl State {
         self.changed = true
     }
 
-    fn sync(&mut self, force: bool) -> Result<()> {
+    fn sync_local(&mut self, force: bool) -> Result<()> {
         if self.changed || force {
             let data = serde_json::to_vec(&self.history)?;
             self.syncer.store(&self.host, &data)?;
         }
+        Ok(())
+    }
+
+    fn sync(&mut self, force: bool) -> Result<()> {
+        self.sync_local(force)?;
         for (host, external) in self.external.iter_mut() {
             if let Some(data) = self.syncer.get_newer(&host, external.version(force))? {
                 let history: Vec<Entry> = serde_json::from_slice(&data.data)?;
@@ -241,9 +246,9 @@ impl Server {
                     error!("Failed to remove server socket: {e}");
                 }
                 if !no_sync {
-                    debug!("Run a final sync before exit");
+                    debug!("Run a final sync_local before exit");
                     // run a sync before exiting, so that we don't loose any state.
-                    if let Err(e) = self.sync(false) {
+                    if let Err(e) = self.sync_local(false) {
                         error!("Failed to sync: {e}");
                     }
                 }
@@ -282,6 +287,11 @@ impl Server {
             .iter()
             .map(|e| e.cmd.clone())
             .collect()
+    }
+
+    fn sync_local(&self, force: bool) -> Result<()> {
+        let mut state = self.state.lock().unwrap();
+        state.sync_local(force)
     }
 
     fn sync(&self, force: bool) -> Result<()> {
