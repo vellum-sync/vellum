@@ -17,7 +17,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     api::{Connection, Listener, Message},
-    client,
     config::Config,
     error::Result,
     sync::{Syncer, Version, get_syncer},
@@ -28,16 +27,10 @@ pub struct Args {
     /// Run the server in the foreground
     #[arg(short, long)]
     foreground: bool,
-
-    /// Stop the current server, instead of starting a new one
-    #[arg(short, long)]
-    stop: bool,
 }
 
 pub fn run(config: &Config, args: Args) -> Result<()> {
-    if args.stop {
-        client::stop_server(config)
-    } else if args.foreground {
+    if args.foreground {
         start(config)
     } else if let Fork::Child = daemon(false, false)? {
         background(config);
@@ -239,13 +232,20 @@ impl Server {
                     error!("Failed to send history: {e}");
                 };
             }
-            Message::Exit => {
+            Message::Exit(no_sync) => {
                 info!("Received request to exit");
                 if let Err(e) = conn.ack() {
                     error!("Failed to send ack: {e}");
                 };
                 if let Err(e) = Listener::remove_socket(&self.cfg) {
                     error!("Failed to remove server socket: {e}");
+                }
+                if !no_sync {
+                    debug!("Run a final sync before exit");
+                    // run a sync before exiting, so that we don't loose any state.
+                    if let Err(e) = self.sync(false) {
+                        error!("Failed to sync: {e}");
+                    }
                 }
                 debug!("Exiting ...");
                 exit(0);

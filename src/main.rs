@@ -55,6 +55,13 @@ enum Commands {
 
     /// Run the background history management server
     Server(server::Args),
+
+    /// Stop the currently running server
+    Stop {
+        /// Don't sync the history before exiting
+        #[arg(short, long)]
+        no_sync: bool,
+    },
 }
 
 fn create_log_file(log_file: &str) -> io::Result<fs::File> {
@@ -93,6 +100,7 @@ fn main() {
         Commands::Config => config.show(),
         Commands::Sync { force } => client::sync(&config, force),
         Commands::Server(args) => server::run(&config, args),
+        Commands::Stop { no_sync } => client::stop_server(&config, no_sync),
     } {
         error!("{e}");
         exit(1);

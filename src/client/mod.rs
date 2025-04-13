@@ -5,9 +5,9 @@ pub fn store(cfg: &Config, cmd: String) -> Result<()> {
     conn.store(cmd)
 }
 
-pub fn stop_server(cfg: &Config) -> Result<()> {
+pub fn stop_server(cfg: &Config, no_sync: bool) -> Result<()> {
     let mut conn = Connection::new(cfg)?;
-    conn.exit()
+    conn.exit(no_sync)
 }
 
 pub fn history(cfg: &Config) -> Result<()> {

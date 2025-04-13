@@ -86,8 +86,8 @@ impl Connection {
         }
     }
 
-    pub fn exit(&mut self) -> Result<()> {
-        let msg = Message::Exit;
+    pub fn exit(&mut self, no_sync: bool) -> Result<()> {
+        let msg = Message::Exit(no_sync);
         match self.request(&msg)? {
             Message::Ack => Ok(()),
             Message::Error(e) => Err(Error::Generic(e)),
@@ -168,5 +168,5 @@ pub enum Message {
     HistoryRequest,
     History(Vec<String>),
     Sync(bool),
-    Exit,
+    Exit(bool),
 }
