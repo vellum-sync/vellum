@@ -9,3 +9,12 @@ pub fn stop_server(cfg: &Config) -> Result<()> {
     let mut conn = Connection::new(cfg)?;
     conn.exit()
 }
+
+pub fn history(cfg: &Config) -> Result<()> {
+    let mut conn = Connection::new(cfg)?;
+    let history = conn.history_request()?;
+    for command in history {
+        println!("{command}")
+    }
+    Ok(())
+}

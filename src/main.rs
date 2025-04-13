@@ -81,7 +81,7 @@ fn main() {
 
     if let Err(e) = match cli.command {
         Commands::Store { shell_command } => client::store(&config, shell_command),
-        Commands::History => Ok(println!("history")),
+        Commands::History => client::history(&config),
         Commands::Config => config.show(),
         Commands::Server(args) => server::run(&config, args),
     } {

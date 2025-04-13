@@ -1,4 +1,5 @@
 use std::{
+    fs::remove_file,
     io::{Read, Write},
     os::unix::net::{self, UnixListener, UnixStream},
     path::Path,
@@ -71,6 +72,11 @@ impl Connection {
         }
     }
 
+    pub fn send_history(&mut self, history: Vec<String>) -> Result<()> {
+        let msg = Message::History(history);
+        self.send(&msg)
+    }
+
     pub fn exit(&mut self) -> Result<()> {
         let msg = Message::Exit;
         match self.request(&msg)? {
@@ -119,6 +125,12 @@ impl Server {
         Incoming {
             i: self.l.incoming(),
         }
+    }
+
+    pub fn remove_socket(cfg: &Config) -> Result<()> {
+        let path = Path::new(&cfg.state_dir).join("server.sock");
+        debug!("Removing socket {path:?}");
+        Ok(remove_file(path)?)
     }
 }
 

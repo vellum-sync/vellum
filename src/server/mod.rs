@@ -80,7 +80,7 @@ fn handle_client(mut conn: Connection, config: Config) {
     }
 }
 
-fn handle_request(req: Message, conn: &mut Connection, _cfg: &Config) {
+fn handle_request(req: Message, conn: &mut Connection, cfg: &Config) {
     match req {
         Message::Store(cmd) => {
             info!("Recevied request to store command: {cmd}");
@@ -90,12 +90,20 @@ fn handle_request(req: Message, conn: &mut Connection, _cfg: &Config) {
         }
         Message::HistoryRequest => {
             info!("Received history request");
+            let history = vec!["...".to_owned()];
+            if let Err(e) = conn.send_history(history) {
+                error!("Failed to send ack: {e}");
+            };
         }
         Message::Exit => {
             info!("Received request to exit");
             if let Err(e) = conn.ack() {
                 error!("Failed to send ack: {e}");
             };
+            if let Err(e) = Server::remove_socket(cfg) {
+                error!("Failed to remove server socket: {e}");
+            }
+            debug!("Exiting ...");
             exit(0);
         }
         r => {
