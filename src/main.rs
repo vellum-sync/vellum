@@ -5,6 +5,7 @@ use env_logger::Target;
 use log::error;
 
 mod api;
+mod client;
 mod config;
 mod error;
 mod server;
@@ -79,9 +80,7 @@ fn main() {
     };
 
     if let Err(e) = match cli.command {
-        Commands::Store {
-            shell_command: command,
-        } => Ok(println!("store: {command}")),
+        Commands::Store { shell_command } => client::store(&config, shell_command),
         Commands::History => Ok(println!("history")),
         Commands::Config => config.show(),
         Commands::Server(args) => server::run(&config, args),

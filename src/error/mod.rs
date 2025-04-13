@@ -10,6 +10,7 @@ pub enum Error {
     Parse(toml::de::Error),
     Format(toml::ser::Error),
     Lookup(BaseDirectoriesError),
+    Generic(String),
 }
 
 impl Display for Error {
@@ -21,6 +22,7 @@ impl Display for Error {
             Self::Parse(e) => write!(f, "PARSE ERROR: {e}"),
             Self::Format(e) => write!(f, "FORMAT ERROR: {e}"),
             Self::Lookup(e) => write!(f, "LOOKUP ERROR: {e}"),
+            Self::Generic(s) => write!(f, "{s}"),
         }
     }
 }
@@ -34,6 +36,7 @@ impl error::Error for Error {
             Self::Parse(e) => Some(e),
             Self::Format(e) => Some(e),
             Self::Lookup(e) => Some(e),
+            Self::Generic(_) => None,
         }
     }
 }

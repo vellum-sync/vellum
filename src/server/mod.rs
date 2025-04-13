@@ -1,6 +1,5 @@
 use std::{
     env::current_exe,
-    fmt::Display,
     os::unix::process::CommandExt,
     path::Path,
     process::{self, Command, exit},
