@@ -58,7 +58,7 @@ fn start(config: &Config, args: Args) -> Result<(), Error> {
     Ok(())
 }
 
-fn handle_client(conn: Connection, _config: Config) {
+fn handle_client(mut conn: Connection, _config: Config) {
     for request in conn.requests() {
         match request {
             Ok(req) => {

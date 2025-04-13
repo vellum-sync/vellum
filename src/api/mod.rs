@@ -1,4 +1,5 @@
 use std::{
+    io::{Read, Write},
     os::unix::net::{self, UnixListener, UnixStream},
     path::Path,
 };
@@ -23,26 +24,36 @@ impl Connection {
         Ok(Connection { s: stream })
     }
 
-    pub fn send(&self, msg: &Message) -> Result<()> {
-        Ok(serde_json::to_writer(&self.s, msg)?)
+    pub fn send(&mut self, msg: &Message) -> Result<()> {
+        let data = serde_json::to_vec(msg)?;
+        let len = data.len() as u64;
+        self.s.write_all(&len.to_le_bytes())?;
+        Ok(self.s.write_all(&data)?)
     }
 
-    pub fn receive(&self) -> Result<Message> {
-        Ok(serde_json::from_reader(&self.s)?)
+    pub fn receive(&mut self) -> Result<Message> {
+        let mut buf = [0 as u8; 8];
+        self.s.read_exact(&mut buf)?;
+        let len = u64::from_le_bytes(buf);
+
+        let mut data = vec![0u8; len as usize];
+        self.s.read_exact(&mut data)?;
+
+        Ok(serde_json::from_slice(&data)?)
     }
 
-    pub fn request(&self, msg: &Message) -> Result<Message> {
+    pub fn request(&mut self, msg: &Message) -> Result<Message> {
         debug!("send message: {msg:?}");
         self.send(msg)?;
         debug!("receive response");
         self.receive()
     }
 
-    pub fn requests(&self) -> Requests<'_> {
+    pub fn requests(&mut self) -> Requests<'_> {
         Requests { c: self }
     }
 
-    pub fn store(&self, cmd: String) -> Result<()> {
+    pub fn store(&mut self, cmd: String) -> Result<()> {
         let msg = Message::Store(cmd);
         match self.request(&msg)? {
             Message::Ack => Ok(()),
@@ -51,7 +62,7 @@ impl Connection {
         }
     }
 
-    pub fn history_request(&self) -> Result<Vec<String>> {
+    pub fn history_request(&mut self) -> Result<Vec<String>> {
         let msg = Message::HistoryRequest;
         match self.request(&msg)? {
             Message::History(h) => Ok(h),
@@ -60,7 +71,7 @@ impl Connection {
         }
     }
 
-    pub fn exit(&self) -> Result<()> {
+    pub fn exit(&mut self) -> Result<()> {
         let msg = Message::Exit;
         match self.request(&msg)? {
             Message::Ack => Ok(()),
@@ -71,7 +82,7 @@ impl Connection {
 }
 
 pub struct Requests<'a> {
-    c: &'a Connection,
+    c: &'a mut Connection,
 }
 
 impl<'a> Iterator for Requests<'a> {
