@@ -4,33 +4,19 @@ use std::{
     os::unix::process::CommandExt,
     path::Path,
     process::{self, Command, exit},
-    thread::sleep,
+    thread::{self, sleep},
     time::Duration,
 };
 
 use clap;
 use fork::{Fork, daemon};
-use log::debug;
+use log::{debug, error, info};
 
-use crate::config::Config;
-
-pub enum Error {
-    Daemon(i32),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Daemon(errno) => write!(f, "failed to start server daemon (errno={errno})"),
-        }
-    }
-}
-
-impl From<i32> for Error {
-    fn from(value: i32) -> Self {
-        Self::Daemon(value)
-    }
-}
+use crate::{
+    api::{Connection, Server},
+    config::Config,
+    error::Error,
+};
 
 #[derive(clap::Args, Debug, Default)]
 pub struct Args {
@@ -54,9 +40,37 @@ fn start(config: &Config, args: Args) -> Result<(), Error> {
     let pid = process::id();
     debug!("server: config={config:?} args={args:?} pid={pid}");
 
+    let server = Server::new(config)?;
+
+    for conn in server.incoming() {
+        match conn {
+            Ok(conn) => {
+                let cfg = config.clone();
+                thread::spawn(|| handle_client(conn, cfg));
+            }
+            Err(e) => {
+                error!("Failed to accept connection: {e}");
+            }
+        }
+    }
+
     sleep(Duration::from_secs(300));
 
     Ok(())
+}
+
+fn handle_client(conn: Connection, _config: Config) {
+    for request in conn.requests() {
+        match request {
+            Ok(req) => {
+                info!("got request: {req:?}");
+            }
+            Err(e) => {
+                error!("error getting next request: {e}");
+                return;
+            }
+        }
+    }
 }
 
 fn background(config: &Config, _args: Args) {

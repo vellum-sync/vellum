@@ -1,15 +1,16 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{
-    fmt::Display,
-    fs, io,
+    fs,
     path::{Path, PathBuf},
 };
 use toml;
-use xdg::{BaseDirectories, BaseDirectoriesError};
+use xdg::BaseDirectories;
 
-pub type Result = std::result::Result<Config, Error>;
+use crate::error::Error;
 
-#[derive(Deserialize, Debug)]
+pub type Result = crate::error::Result<Config>;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
     #[serde(skip)]
     pub path: Option<PathBuf>,
@@ -45,6 +46,12 @@ impl Config {
             None => Ok(Self::default()),
         }
     }
+
+    pub fn show(&self) -> std::result::Result<(), Error> {
+        let cfg = toml::to_string(self)?;
+        print!("{cfg}");
+        Ok(())
+    }
 }
 
 impl Default for Config {
@@ -57,40 +64,5 @@ impl Default for Config {
             path: None,
             state_dir: dirs.get_state_home(),
         }
-    }
-}
-
-#[derive(Debug)]
-pub enum Error {
-    Read(io::Error),
-    Parse(toml::de::Error),
-    Lookup(BaseDirectoriesError),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Read(e) => write!(f, "READ ERROR: {e}"),
-            Self::Parse(e) => write!(f, "PARSE ERROR: {e}"),
-            Self::Lookup(e) => write!(f, "LOOKUP ERROR: {e}"),
-        }
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(value: io::Error) -> Self {
-        Self::Read(value)
-    }
-}
-
-impl From<toml::de::Error> for Error {
-    fn from(value: toml::de::Error) -> Self {
-        Self::Parse(value)
-    }
-}
-
-impl From<BaseDirectoriesError> for Error {
-    fn from(value: BaseDirectoriesError) -> Self {
-        Self::Lookup(value)
     }
 }

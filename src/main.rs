@@ -4,7 +4,9 @@ use clap::{Parser, Subcommand};
 use env_logger::Target;
 use log::error;
 
+mod api;
 mod config;
+mod error;
 mod server;
 
 pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
@@ -38,6 +40,9 @@ enum Commands {
 
     /// List all the stored commands
     History,
+
+    /// Display the vellum configuration
+    Config,
 
     /// Run the background history management server
     Server(server::Args),
@@ -78,6 +83,7 @@ fn main() {
             shell_command: command,
         } => Ok(println!("store: {command}")),
         Commands::History => Ok(println!("history")),
+        Commands::Config => config.show(),
         Commands::Server(args) => server::run(&config, args),
     } {
         error!("{e}");
