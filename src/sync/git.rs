@@ -5,10 +5,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use git2::{Commit, Cred, ErrorCode, Oid, PushOptions, RemoteCallbacks, Repository};
+use git2::{Commit, Cred, ErrorCode, FetchOptions, Oid, PushOptions, RemoteCallbacks, Repository};
 use log::debug;
 
-use crate::{config::Config, error::Result};
+use crate::{
+    config::Config,
+    error::{Error, Result},
+};
 
 use super::{Data, Syncer, Version};
 
@@ -39,12 +42,66 @@ impl Git {
         })
     }
 
-    fn pull(&self) -> Result<()> {
-        // TODO(jp3): need to implement `pull -r`
+    fn fetch(&self) -> Result<()> {
+        debug!("start fetch ...");
+
+        let git_config = git2::Config::open_default()?;
+
+        let mut cbs = RemoteCallbacks::new();
+        cbs.credentials(|url, username, types| {
+            debug!(
+                "trying to find credentials for {url} (username: {username:?}, types: {types:?})"
+            );
+            if types.is_default() {
+                Cred::default()
+            } else if types.is_ssh_key() {
+                let username = username
+                    .ok_or_else(|| git2::Error::from_str("missing username for ssh auth"))?;
+                if !self.cfg.sync.ssh_key.is_empty() {
+                    let privatekey = Path::new(&self.cfg.sync.ssh_key);
+                    Cred::ssh_key(username, None, privatekey, None)
+                } else {
+                    Cred::ssh_key_from_agent(username)
+                }
+            } else if types.is_user_pass_plaintext() {
+                Cred::credential_helper(&git_config, url, username)
+            } else {
+                Err(git2::Error::from_str(&format!(
+                    "no supported auth methods available: {types:?}"
+                )))
+            }
+        })
+        .update_tips(|name, old, new| {
+            debug!("update tip: name: {name} old: {old:?} new: {new:?}");
+            true
+        });
+
+        let mut opts = FetchOptions::new();
+        opts.remote_callbacks(cbs);
+
+        let mut remote = self.repo.find_remote("origin")?;
+
+        let head_ref = self.repo.head()?.resolve()?;
+        let name = head_ref
+            .name()
+            .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
+
+        Ok(remote.fetch::<&str>(&[name], Some(&mut opts), None)?)
+    }
+
+    fn rebase(&self) -> Result<()> {
+        // TODO(jp3): implement ...
         Ok(())
     }
 
+    fn pull(&self) -> Result<()> {
+        self.fetch()?;
+        self.rebase()
+    }
+
     fn push(&self) -> Result<()> {
+        debug!("start push ...");
+
         let git_config = git2::Config::open_default()?;
 
         let mut cbs = RemoteCallbacks::new();
@@ -89,9 +146,12 @@ impl Git {
 
         let mut remote = self.repo.find_remote("origin")?;
 
-        // TODO(jp3): We should be looking up HEAD, not assuming that we are on
-        // main.
-        Ok(remote.push::<&str>(&["refs/heads/main"], Some(&mut opts))?)
+        let head_ref = self.repo.head()?.resolve()?;
+        let name = head_ref
+            .name()
+            .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
+
+        Ok(remote.push(&[name], Some(&mut opts))?)
     }
 
     fn tip(&self) -> Result<Option<Commit>> {
