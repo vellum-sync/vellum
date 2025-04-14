@@ -42,8 +42,15 @@ impl Git {
         })
     }
 
-    fn fetch(&self) -> Result<()> {
+    fn fetch(&self) -> Result<bool> {
         debug!("start fetch ...");
+
+        let mut changes = false;
+
+        let head_ref = self.repo.head()?.resolve()?;
+        let ref_name = head_ref
+            .name()
+            .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
 
         let git_config = git2::Config::open_default()?;
 
@@ -73,6 +80,9 @@ impl Git {
         })
         .update_tips(|name, old, new| {
             debug!("update tip: name: {name} old: {old:?} new: {new:?}");
+            if name == ref_name {
+                changes = true;
+            }
             true
         });
 
@@ -81,12 +91,13 @@ impl Git {
 
         let mut remote = self.repo.find_remote("origin")?;
 
-        let head_ref = self.repo.head()?.resolve()?;
-        let name = head_ref
-            .name()
-            .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
+        remote.fetch::<&str>(&[ref_name], Some(&mut opts), None)?;
 
-        Ok(remote.fetch::<&str>(&[name], Some(&mut opts), None)?)
+        // make sure that the update_tips callback is gone, since it implicitly
+        // borrows changes.
+        drop(opts);
+
+        Ok(changes)
     }
 
     fn rebase(&self) -> Result<()> {
@@ -95,8 +106,10 @@ impl Git {
     }
 
     fn pull(&self) -> Result<()> {
-        self.fetch()?;
-        self.rebase()
+        if self.fetch()? {
+            self.rebase()?;
+        }
+        Ok(())
     }
 
     fn push(&self) -> Result<()> {
