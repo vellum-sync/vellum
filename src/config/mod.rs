@@ -21,6 +21,7 @@ pub struct Config {
     #[serde(default = "default_hostname")]
     pub hostname: PathBuf,
 
+    #[serde(default)]
     pub sync: Sync,
 }
 
@@ -29,7 +30,11 @@ pub struct Sync {
     #[serde(default = "default_sync_enabled")]
     pub enabled: bool,
 
+    #[serde(default)]
     pub url: String,
+
+    #[serde(default)]
+    pub ssh_key: String,
 
     #[serde(default = "default_sync_path")]
     path: PathBuf,
@@ -90,6 +95,7 @@ impl Default for Sync {
         Self {
             enabled: default_sync_enabled(),
             url: "".to_string(),
+            ssh_key: "".to_string(),
             path: default_sync_path(),
         }
     }

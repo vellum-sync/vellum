@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use git2::{Commit, ErrorCode, Oid, Repository};
+use git2::{Commit, Cred, ErrorCode, Oid, PushOptions, RemoteCallbacks, Repository};
 use log::debug;
 
 use crate::{config::Config, error::Result};
@@ -45,8 +45,53 @@ impl Git {
     }
 
     fn push(&self) -> Result<()> {
-        // TODO(jp3): need to implement `push`
-        Ok(())
+        let git_config = git2::Config::open_default()?;
+
+        let mut cbs = RemoteCallbacks::new();
+        cbs.credentials(|url, username, types| {
+            debug!(
+                "trying to find credentials for {url} (username: {username:?}, types: {types:?})"
+            );
+            if types.is_default() {
+                Cred::default()
+            } else if types.is_ssh_key() {
+                let username = username
+                    .ok_or_else(|| git2::Error::from_str("missing username for ssh auth"))?;
+                if !self.cfg.sync.ssh_key.is_empty() {
+                    let privatekey = Path::new(&self.cfg.sync.ssh_key);
+                    Cred::ssh_key(username, None, privatekey, None)
+                } else {
+                    Cred::ssh_key_from_agent(username)
+                }
+            } else if types.is_user_pass_plaintext() {
+                Cred::credential_helper(&git_config, url, username)
+            } else {
+                Err(git2::Error::from_str(&format!(
+                    "no supported auth methods available: {types:?}"
+                )))
+            }
+        })
+        .push_update_reference(|name, status| {
+            debug!("update reference: name: {name} status: {status:?}");
+            if let Some(msg) = status {
+                Err(git2::Error::from_str(msg))
+            } else {
+                Ok(())
+            }
+        })
+        .update_tips(|name, old, new| {
+            debug!("update tip: name: {name} old: {old:?} new: {new:?}");
+            true
+        });
+
+        let mut opts = PushOptions::new();
+        opts.remote_callbacks(cbs);
+
+        let mut remote = self.repo.find_remote("origin")?;
+
+        // TODO(jp3): We should be looking up HEAD, not assuming that we are on
+        // main.
+        Ok(remote.push::<&str>(&["refs/heads/main"], Some(&mut opts))?)
     }
 
     fn tip(&self) -> Result<Option<Commit>> {
@@ -112,7 +157,13 @@ impl Syncer for Git {
         index.add_path(&target)?;
         index.write()?;
 
-        if let Some(commit) = self.commit(&format!("update {host}"), force)? {
+        let message = if force {
+            format!("update {host} (forced)")
+        } else {
+            format!("update {host}")
+        };
+
+        if let Some(commit) = self.commit(&message, force)? {
             self.push()?;
         }
 
