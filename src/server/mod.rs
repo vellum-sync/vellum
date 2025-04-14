@@ -158,9 +158,10 @@ impl State {
     }
 
     fn sync_local(&mut self, force: bool) -> Result<()> {
+        debug!("sync_local changed: {} force: {force}", self.changed);
         if self.changed || force {
             let data = serde_json::to_vec(&self.history)?;
-            self.syncer.store(&self.host, &data)?;
+            self.syncer.store(&self.host, &data, force)?;
         }
         Ok(())
     }

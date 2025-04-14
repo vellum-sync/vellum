@@ -12,7 +12,7 @@ impl Dummy {
 }
 
 impl Syncer for Dummy {
-    fn store(&self, _host: &str, _data: &[u8]) -> Result<()> {
+    fn store(&self, _host: &str, _data: &[u8], _force: bool) -> Result<()> {
         Ok(())
     }
 

@@ -65,7 +65,7 @@ impl Git {
         })
     }
 
-    fn commit(&self, message: &str) -> Result<Option<Oid>> {
+    fn commit(&self, message: &str, force: bool) -> Result<Option<Oid>> {
         let mut index = self.repo.index()?;
         let tree = self.repo.find_tree(index.write_tree()?)?;
         let author = self.repo.signature()?;
@@ -73,8 +73,9 @@ impl Git {
         let tip = self.tip()?;
         if let Some(tip) = tip.as_ref() {
             debug!("tree: {:?}, tip: {:?}", tree.id(), tip.tree_id());
-            if tree.id() == tip.tree_id() {
-                // nothing has changed, so don't create a new commit.
+            if tree.id() == tip.tree_id() && !force {
+                // nothing has changed, so don't create a new commit unless
+                // forced.
                 return Ok(None);
             }
             parents.push(tip);
@@ -94,7 +95,7 @@ impl fmt::Debug for Git {
 }
 
 impl Syncer for Git {
-    fn store(&self, host: &str, data: &[u8]) -> Result<()> {
+    fn store(&self, host: &str, data: &[u8], force: bool) -> Result<()> {
         self.pull()?;
 
         let mut index = self.repo.index()?;
@@ -111,7 +112,7 @@ impl Syncer for Git {
         index.add_path(&target)?;
         index.write()?;
 
-        if let Some(commit) = self.commit(&format!("update {host}"))? {
+        if let Some(commit) = self.commit(&format!("update {host}"), force)? {
             self.push()?;
         }
 

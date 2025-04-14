@@ -20,7 +20,7 @@ pub struct Data {
 }
 
 pub trait Syncer: fmt::Debug + Send {
-    fn store(&self, host: &str, data: &[u8]) -> Result<()>;
+    fn store(&self, host: &str, data: &[u8], force: bool) -> Result<()>;
 
     fn get_newer(&self, host: &str, ver: Option<&Version>) -> Result<Option<Data>>;
 
