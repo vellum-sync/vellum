@@ -64,6 +64,27 @@ impl Git {
             None => None,
         })
     }
+
+    fn commit(&self, message: &str) -> Result<Option<Oid>> {
+        let mut index = self.repo.index()?;
+        let tree = self.repo.find_tree(index.write_tree()?)?;
+        let author = self.repo.signature()?;
+        let mut parents = Vec::with_capacity(1);
+        let tip = self.tip()?;
+        if let Some(tip) = tip.as_ref() {
+            debug!("tree: {:?}, tip: {:?}", tree.id(), tip.tree_id());
+            if tree.id() == tip.tree_id() {
+                // nothing has changed, so don't create a new commit.
+                return Ok(None);
+            }
+            parents.push(tip);
+        }
+        let commit = self
+            .repo
+            .commit(Some("HEAD"), &author, &author, message, &tree, &parents)?;
+        debug!("Created commit {commit:?}");
+        Ok(Some(commit))
+    }
 }
 
 impl fmt::Debug for Git {
@@ -89,29 +110,12 @@ impl Syncer for Git {
         }
         index.add_path(&target)?;
         index.write()?;
-        let tree = self.repo.find_tree(index.write_tree()?)?;
-        let author = self.repo.signature()?;
-        let mut parents = Vec::with_capacity(1);
-        let tip = self.tip()?;
-        if let Some(tip) = tip.as_ref() {
-            debug!("tree: {:?}, tip: {:?}", tree.id(), tip.tree_id());
-            if tree.id() == tip.tree_id() {
-                // nothing has changed, so don't create a new commit.
-                return Ok(());
-            }
-            parents.push(tip);
-        }
-        let commit = self.repo.commit(
-            Some("HEAD"),
-            &author,
-            &author,
-            &format!("update {host}"),
-            &tree,
-            &parents,
-        )?;
-        debug!("Created commit {commit:?}");
 
-        self.push()
+        if let Some(commit) = self.commit(&format!("update {host}"))? {
+            self.push()?;
+        }
+
+        Ok(())
     }
 
     fn get_newer(&self, host: &str, ver: Option<&Version>) -> Result<Option<Data>> {
