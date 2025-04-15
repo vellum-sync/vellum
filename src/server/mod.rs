@@ -107,9 +107,10 @@ impl ExternalHistory {
 struct State {
     host: String,
     changed: bool,
-    history: Vec<Entry>,
+    local: Vec<Entry>,
     external: HashMap<String, ExternalHistory>,
     syncer: Box<dyn Syncer>,
+    history: Vec<String>,
 }
 
 impl State {
@@ -117,9 +118,10 @@ impl State {
         let mut s = Self {
             host,
             changed: false,
-            history: Vec::new(),
+            local: Vec::new(),
             external: HashMap::new(),
             syncer,
+            history: Vec::new(),
         };
         s.load()?;
         Ok(s)
@@ -127,7 +129,7 @@ impl State {
 
     fn load(&mut self) -> Result<()> {
         if let Some(data) = self.syncer.get_newer(&self.host, None)? {
-            self.history = serde_json::from_slice(&data.data)?;
+            self.local = serde_json::from_slice(&data.data)?;
         }
 
         for host in self.syncer.get_external_hosts(&self.host)? {
@@ -144,7 +146,7 @@ impl State {
     }
 
     fn combined_history(&self) -> Vec<Entry> {
-        let mut combined = self.history.clone();
+        let mut combined = self.local.clone();
         for (_, external) in self.external.iter() {
             combined.extend_from_slice(&external.history);
         }
@@ -153,14 +155,15 @@ impl State {
     }
 
     fn store(&mut self, host: String, cmd: String) {
-        self.history.push(Entry::new(host, cmd));
+        self.local.push(Entry::new(host, cmd.clone()));
+        self.history.push(cmd);
         self.changed = true
     }
 
     fn sync_local(&mut self, force: bool) -> Result<()> {
         debug!("sync_local changed: {} force: {force}", self.changed);
         if self.changed || force {
-            let data = serde_json::to_vec(&self.history)?;
+            let data = serde_json::to_vec(&self.local)?;
             self.syncer.store(&self.host, &data, force)?;
         }
         Ok(())
@@ -176,6 +179,13 @@ impl State {
             }
         }
         // TODO(jp3): How do we learn about new hosts, or ones that have gone?
+
+        self.history = self
+            .combined_history()
+            .iter()
+            .map(|e| e.cmd.clone())
+            .collect();
+
         Ok(())
     }
 }
@@ -293,11 +303,7 @@ impl Server {
 
     fn history(&self) -> Vec<String> {
         let state = self.state.lock().unwrap();
-        state
-            .combined_history()
-            .iter()
-            .map(|e| e.cmd.clone())
-            .collect()
+        state.history.clone()
     }
 
     fn sync_local(&self, force: bool) -> Result<()> {
