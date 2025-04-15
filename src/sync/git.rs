@@ -5,7 +5,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use git2::{Commit, Cred, ErrorCode, FetchOptions, Oid, PushOptions, RemoteCallbacks, Repository};
+use git2::{
+    Commit, Cred, ErrorCode, FetchOptions, Oid, PushOptions, Rebase, RebaseOptions,
+    RemoteCallbacks, Repository,
+};
 use log::debug;
 
 use crate::{
@@ -101,8 +104,53 @@ impl Git {
     }
 
     fn rebase(&self) -> Result<()> {
-        // TODO(jp3): implement ...
-        Ok(())
+        let head = self.repo.head()?;
+        let branch = self.repo.reference_to_annotated_commit(&head)?;
+
+        let upstream_ref = self.repo.find_reference(
+            self.repo
+                .branch_upstream_name(branch.refname().unwrap())?
+                .as_str()
+                .unwrap(),
+        )?;
+        let upstream = self.repo.reference_to_annotated_commit(&upstream_ref)?;
+
+        debug!(
+            "start rebase of {:?} upstream {:?}",
+            branch.refname(),
+            upstream.refname()
+        );
+
+        let mut opts = RebaseOptions::new();
+        opts.inmemory(false);
+
+        let mut rebase = self
+            .repo
+            .rebase(Some(&branch), Some(&upstream), None, Some(&mut opts))?;
+
+        if let Err(e) = self.run_rebase(&mut rebase) {
+            // TODO(jp3): what do we do if abort fails? we are already handling
+            // an error ...
+            let _ = rebase.abort();
+            return Err(e);
+        }
+
+        Ok(rebase.finish(None)?)
+    }
+
+    fn run_rebase(&self, rebase: &mut Rebase) -> Result<()> {
+        let committer = self.repo.signature()?;
+
+        loop {
+            let operation = match rebase.next() {
+                Some(Ok(op)) => op,
+                Some(Err(e)) => return Err(Error::Git(e)),
+                None => return Ok(()),
+            };
+            debug!("rebase op {:?}: {}", operation.kind(), operation.id());
+            // let oid = rebase.commit(None, &committer, None)?;
+            // debug!("updated {} -> {}", operation.id(), oid);
+        }
     }
 
     fn pull(&self) -> Result<()> {
@@ -113,6 +161,21 @@ impl Git {
     }
 
     fn push(&self) -> Result<()> {
+        match self.try_push() {
+            Err(Error::Git(e)) => {
+                if e.code() == ErrorCode::NotFastForward {
+                    debug!("push failed due to NotFasForward, try rebase ...");
+                    self.rebase()?;
+                    self.try_push()
+                } else {
+                    Err(Error::Git(e))
+                }
+            }
+            r => r,
+        }
+    }
+
+    fn try_push(&self) -> Result<()> {
         debug!("start push ...");
 
         let git_config = git2::Config::open_default()?;
