@@ -3,13 +3,15 @@ use std::{
     fs::{self, File, exists, read_dir},
     io::{Read, Write},
     path::{Path, PathBuf},
+    thread::sleep,
+    time::Duration,
 };
 
 use git2::{
     Commit, Cred, ErrorCode, FetchOptions, Oid, PushOptions, Rebase, RebaseOptions,
     RemoteCallbacks, Repository,
 };
-use log::debug;
+use log::{debug, error};
 
 use crate::{
     config::Config,
@@ -129,8 +131,25 @@ impl Git {
             .rebase(Some(&branch), Some(&upstream), None, Some(&mut opts))?;
 
         if let Err(e) = self.run_rebase(&mut rebase) {
+            debug!("rebase failed");
+            let index = self.repo.index()?;
+            debug!("check for conflicts ...");
+            for conflict in index.conflicts()? {
+                let conflict = conflict?;
+                debug!(
+                    "{:?} -> {:?} / {:?}",
+                    conflict.ancestor, conflict.our, conflict.their
+                );
+            }
+            debug!("look at all files ...");
+            for entry in index.iter() {
+                debug!("{entry:?}");
+            }
+            // debug!("sleep 60s ...");
+            // sleep(Duration::from_secs(60));
             // TODO(jp3): what do we do if abort fails? we are already handling
             // an error ...
+            debug!("abort rebase");
             let _ = rebase.abort();
             return Err(e);
         }
@@ -148,6 +167,17 @@ impl Git {
                 None => return Ok(()),
             };
             debug!("rebase op {:?}: {}", operation.kind(), operation.id());
+            let index = self.repo.index()?;
+            debug!(
+                "INDEX: len: {}, is_empty: {}, has conflicts: {}",
+                index.len(),
+                index.is_empty(),
+                index.has_conflicts()
+            );
+            match rebase.commit(None, &committer, None) {
+                Ok(oid) => debug!("updated {} -> {}", operation.id(), oid),
+                Err(e) => error!("commit failed: {e}"),
+            };
             // let oid = rebase.commit(None, &committer, None)?;
             // debug!("updated {} -> {}", operation.id(), oid);
         }
