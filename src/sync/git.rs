@@ -3,8 +3,6 @@ use std::{
     fs::{self, File, exists, read_dir},
     io::{Read, Write},
     path::{Path, PathBuf},
-    thread::sleep,
-    time::Duration,
 };
 
 use git2::{
@@ -145,8 +143,6 @@ impl Git {
             for entry in index.iter() {
                 debug!("{entry:?}");
             }
-            // debug!("sleep 60s ...");
-            // sleep(Duration::from_secs(60));
             // TODO(jp3): what do we do if abort fails? we are already handling
             // an error ...
             debug!("abort rebase");
@@ -340,7 +336,7 @@ impl Syncer for Git {
             format!("update {host}")
         };
 
-        if let Some(commit) = self.commit(&message, force)? {
+        if let Some(_) = self.commit(&message, force)? {
             self.push()?;
         }
 
@@ -358,7 +354,7 @@ impl Syncer for Git {
         }
         // TODO(jp3): need to get the last modified version of the file
         let version = Version { oid: Oid::zero() };
-        if let Some(prev) = ver {
+        if let Some(_prev) = ver {
             // TODO(jp3): we should check to see if the file has changed since
             // prev, and return None if not ...
         }
