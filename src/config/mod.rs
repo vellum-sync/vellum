@@ -27,15 +27,20 @@ pub struct Config {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Sync {
+    /// Controls if sync is enabled
     #[serde(default = "default_sync_enabled")]
     pub enabled: bool,
 
+    /// URL of upstream git repository
     #[serde(default)]
     pub url: String,
 
+    /// SSH private key file used for SSH git auth
     #[serde(default)]
     pub ssh_key: String,
 
+    /// Path of the sync git checkout, non-absolute paths are relative to the
+    /// state directory.
     #[serde(default = "default_sync_path")]
     path: PathBuf,
 }
@@ -69,7 +74,7 @@ impl Config {
     }
 
     pub fn show(&self) -> std::result::Result<(), Error> {
-        let cfg = toml::to_string(self)?;
+        let cfg = toml::to_string_pretty(self)?;
         print!("{cfg}");
         Ok(())
     }

@@ -5,9 +5,11 @@ use env_logger::Target;
 use log::error;
 
 mod api;
+mod assets;
 mod client;
 mod config;
 mod error;
+mod init;
 mod server;
 mod sync;
 
@@ -45,6 +47,9 @@ enum Commands {
 
     /// Display the vellum configuration
     Config,
+
+    /// Commands to setup/initialise vellum
+    Init(init::Args),
 
     /// Request the server sync the history immediately
     Sync {
@@ -98,6 +103,7 @@ fn main() {
         Commands::Store { shell_command } => client::store(&config, shell_command),
         Commands::History => client::history(&config),
         Commands::Config => config.show(),
+        Commands::Init(args) => init::init(args),
         Commands::Sync { force } => client::sync(&config, force),
         Commands::Server(args) => server::run(&config, args),
         Commands::Stop { no_sync } => client::stop_server(&config, no_sync),
