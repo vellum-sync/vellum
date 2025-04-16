@@ -167,16 +167,27 @@ impl Git {
                 None => return Ok(()),
             };
             debug!("rebase op {:?}: {}", operation.kind(), operation.id());
-            let index = self.repo.index()?;
-            debug!(
-                "INDEX: len: {}, is_empty: {}, has conflicts: {}",
-                index.len(),
-                index.is_empty(),
-                index.has_conflicts()
-            );
+            // let index = self.repo.index()?;
+            // debug!(
+            //     "INDEX: len: {}, is_empty: {}, has conflicts: {}",
+            //     index.len(),
+            //     index.is_empty(),
+            //     index.has_conflicts()
+            // );
+            // debug!("look at all files ...");
+            // for entry in index.iter() {
+            //     debug!("{entry:?}");
+            // }
             match rebase.commit(None, &committer, None) {
                 Ok(oid) => debug!("updated {} -> {}", operation.id(), oid),
-                Err(e) => error!("commit failed: {e}"),
+                Err(e) => {
+                    if e.code() == ErrorCode::Applied {
+                        debug!("patch already applied");
+                    } else {
+                        error!("commit failed: {e}");
+                        return Err(Error::Git(e));
+                    }
+                }
             };
             // let oid = rebase.commit(None, &committer, None)?;
             // debug!("updated {} -> {}", operation.id(), oid);
