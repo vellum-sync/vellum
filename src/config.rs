@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    fs,
+    env, fs,
     path::{Path, PathBuf},
 };
 use toml;
@@ -65,6 +65,10 @@ impl Config {
     }
 
     fn open_default() -> Result {
+        if let Ok(path) = env::var("VELLUM_CONFIG") {
+            return Self::open(path);
+        };
+
         let dirs = BaseDirectories::with_prefix("vellum")?;
 
         match dirs.find_config_file("config.toml") {

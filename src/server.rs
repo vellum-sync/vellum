@@ -1,7 +1,7 @@
 use std::{
     cmp::Ordering,
     collections::HashMap,
-    env::current_exe,
+    env::{self, current_exe},
     os::unix::process::CommandExt,
     path::Path,
     process::{self, Command, exit},
@@ -55,6 +55,9 @@ fn background(config: &Config) {
     let mut cmd = Command::new(exe);
     if let Some(cfg) = config.path.as_ref() {
         cmd.arg("--config").arg(cfg);
+    };
+    if let Ok(value) = env::var("VELLUM_SERVER_LOG") {
+        cmd.env("VELLUM_LOG", value);
     };
     let _ = cmd
         .args(["server", "--foreground"])
