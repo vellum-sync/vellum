@@ -26,7 +26,7 @@ impl Connection {
     }
 
     pub fn send(&mut self, msg: &Message) -> Result<()> {
-        let data = serde_json::to_vec(msg)?;
+        let data = rmp_serde::to_vec(msg)?;
         let len = data.len() as u64;
         self.s.write_all(&len.to_le_bytes())?;
         Ok(self.s.write_all(&data)?)
@@ -40,7 +40,7 @@ impl Connection {
         let mut data = vec![0u8; len as usize];
         self.s.read_exact(&mut data)?;
 
-        Ok(serde_json::from_slice(&data)?)
+        Ok(rmp_serde::from_slice(&data)?)
     }
 
     pub fn request(&mut self, msg: &Message) -> Result<Message> {
