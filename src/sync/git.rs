@@ -6,7 +6,7 @@ use std::{
 };
 
 use git2::{
-    Commit, Cred, ErrorCode, FetchOptions, Oid, PushOptions, Rebase, RebaseOptions,
+    Commit, Cred, ErrorCode, FetchOptions, IndexAddOption, Oid, PushOptions, Rebase, RebaseOptions,
     RemoteCallbacks, Repository,
 };
 use log::{debug, error};
@@ -16,7 +16,7 @@ use crate::{
     error::{Error, Result},
 };
 
-use super::{Data, Syncer, Version};
+use super::{Data, Syncer, Update, Version};
 
 pub struct Git {
     path: PathBuf,
@@ -28,6 +28,7 @@ impl Git {
     pub fn existing(cfg: &Config) -> Result<Self> {
         let path = cfg.sync_path();
         let repo = Repository::open(&path)?;
+        fs::create_dir_all(Path::new(&path).join("hosts"))?;
         Ok(Self {
             path,
             cfg: cfg.clone(),
@@ -38,6 +39,7 @@ impl Git {
     pub fn new(cfg: &Config) -> Result<Self> {
         let path = cfg.sync_path();
         let repo = Repository::init(&path)?;
+        fs::create_dir_all(Path::new(&path).join("hosts"))?;
         Ok(Self {
             path,
             cfg: cfg.clone(),
@@ -380,11 +382,55 @@ impl Syncer for Git {
         Ok(hosts)
     }
 
-    fn start_update(&self) -> Result<Box<dyn super::Update>> {
-        panic!("not implemented");
+    fn start_update<'a>(&'a self, host: &str) -> Result<Box<dyn Update + 'a>> {
+        self.fetch()?;
+        Ok(Box::new(GitUpdate::new(self, host)))
     }
 
     fn refresh(&self) -> Result<PathBuf> {
-        panic!("not implemented");
+        self.pull()?;
+        Ok(Path::new(&self.path).join("hosts"))
+    }
+}
+
+#[derive(Debug)]
+struct GitUpdate<'a> {
+    host: String,
+    git: &'a Git,
+}
+
+impl<'a> GitUpdate<'a> {
+    fn new(git: &'a Git, host: &str) -> Self {
+        Self {
+            host: host.to_string(),
+            git,
+        }
+    }
+}
+
+impl<'a> Update for GitUpdate<'a> {
+    fn path(&self) -> PathBuf {
+        Path::new(&self.git.path).join("hosts").join(&self.host)
+    }
+
+    fn finish(self: Box<Self>, force: bool) -> Result<()> {
+        let mut index = self.git.repo.index()?;
+
+        // TODO(jp3): This should only be adding paths for the host being
+        // updated, use a callback to do the filtering?
+        index.add_all(["*"].iter(), IndexAddOption::FORCE, None)?;
+        index.write()?;
+
+        let message = if force {
+            format!("update {} (forced)", &self.host)
+        } else {
+            format!("update {}", &self.host)
+        };
+
+        if let Some(_) = self.git.commit(&message, force)? {
+            self.git.push()?;
+        }
+
+        Ok(())
     }
 }

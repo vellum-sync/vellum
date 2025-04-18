@@ -34,7 +34,7 @@ impl Syncer for Dummy {
         Ok(vec![])
     }
 
-    fn start_update(&self) -> Result<Box<dyn Update>> {
+    fn start_update(&self, _host: &str) -> Result<Box<dyn Update>> {
         Ok(Box::new(self.clone()))
     }
 

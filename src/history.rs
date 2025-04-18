@@ -82,7 +82,7 @@ impl History {
     }
 
     pub fn save(&mut self, syncer: &dyn Syncer, force: bool) -> Result<()> {
-        let update = syncer.start_update()?;
+        let update = syncer.start_update(&self.host)?;
         self.write(update.path())?;
         self.last_write = Utc::now();
         update.finish(force)
