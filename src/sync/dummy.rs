@@ -1,13 +1,23 @@
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
 use crate::error::Result;
 
-use super::{Data, Syncer, Version};
+use super::{Data, Syncer, Update, Version};
 
-#[derive(Debug)]
-pub struct Dummy;
+#[derive(Debug, Clone)]
+pub struct Dummy {
+    path: PathBuf,
+}
 
 impl Dummy {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+        fs::create_dir_all(path.as_ref())?;
+        Ok(Self {
+            path: path.as_ref().into(),
+        })
     }
 }
 
@@ -22,5 +32,23 @@ impl Syncer for Dummy {
 
     fn get_external_hosts(&self, _host: &str) -> Result<Vec<String>> {
         Ok(vec![])
+    }
+
+    fn start_update(&self) -> Result<Box<dyn Update>> {
+        Ok(Box::new(self.clone()))
+    }
+
+    fn refresh(&self) -> Result<PathBuf> {
+        Ok(self.path.clone())
+    }
+}
+
+impl Update for Dummy {
+    fn path(&self) -> PathBuf {
+        self.path.clone()
+    }
+
+    fn finish(self: Box<Self>, _force: bool) -> Result<()> {
+        Ok(())
     }
 }

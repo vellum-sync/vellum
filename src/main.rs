@@ -9,6 +9,7 @@ mod assets;
 mod client;
 mod config;
 mod error;
+mod history;
 mod init;
 mod server;
 mod sync;

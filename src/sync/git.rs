@@ -379,4 +379,12 @@ impl Syncer for Git {
 
         Ok(hosts)
     }
+
+    fn start_update(&self) -> Result<Box<dyn super::Update>> {
+        panic!("not implemented");
+    }
+
+    fn refresh(&self) -> Result<PathBuf> {
+        panic!("not implemented");
+    }
 }
