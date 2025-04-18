@@ -106,7 +106,7 @@ impl History {
             history: HashMap::new(),
             merged: Vec::new(),
             last_write: Utc::now(),
-            last_read: Utc::now(),
+            last_read: DateTime::from_timestamp_nanos(0),
         }
     }
 
@@ -128,6 +128,16 @@ impl History {
         self.read(path)?;
         self.last_read = Utc::now();
         Ok(())
+    }
+
+    pub fn sync(&mut self, syncer: &dyn Syncer, force: bool) -> Result<()> {
+        let update = syncer.start_update(&self.host)?;
+        let path = update.path();
+        self.write(&path)?;
+        self.last_write = Utc::now();
+        self.read(&path)?;
+        self.last_read = Utc::now();
+        update.finish(force)
     }
 
     pub fn history(&self) -> Vec<Entry> {
@@ -179,17 +189,20 @@ impl History {
             None => return Ok(()),
         };
 
+        // make sure host directory exists
+        let dir = Path::new(path.as_ref()).join(&self.host);
+        fs::create_dir_all(&dir)?;
+
         for (day, chunks) in chunks
             .iter()
             .filter(|chunk| chunk.start < self.last_write)
             .chunk_by(|chunk| format!("{}", chunk.start.format("%Y-%m-%d")))
             .into_iter()
         {
-            let filename = Path::new(path.as_ref()).join(day);
             let mut f = fs::File::options()
                 .append(true)
                 .create(true)
-                .open(filename)?;
+                .open(Path::new(&dir).join(day))?;
             for chunk in chunks.map(|chunk| EncryptedChunk::encrypt(chunk, &key)) {
                 let data = rmp_serde::to_vec(&chunk?)?;
                 let len = data.len() as u64;

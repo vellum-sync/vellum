@@ -383,7 +383,7 @@ impl Syncer for Git {
     }
 
     fn start_update<'a>(&'a self, host: &str) -> Result<Box<dyn Update + 'a>> {
-        self.fetch()?;
+        self.pull()?;
         Ok(Box::new(GitUpdate::new(self, host)))
     }
 
@@ -410,7 +410,7 @@ impl<'a> GitUpdate<'a> {
 
 impl<'a> Update for GitUpdate<'a> {
     fn path(&self) -> PathBuf {
-        Path::new(&self.git.path).join("hosts").join(&self.host)
+        Path::new(&self.git.path).join("hosts")
     }
 
     fn finish(self: Box<Self>, force: bool) -> Result<()> {
