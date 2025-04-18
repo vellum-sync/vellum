@@ -1,5 +1,6 @@
 use std::{error, fmt::Display, io, result};
 
+use aws_lc_rs::error::{KeyRejected, Unspecified};
 use xdg::BaseDirectoriesError;
 
 #[derive(Debug)]
@@ -7,10 +8,14 @@ pub enum Error {
     Daemon(i32),
     IO(io::Error),
     Encoding(serde_json::Error),
+    Encode(rmp_serde::encode::Error),
+    Decode(rmp_serde::decode::Error),
     Parse(toml::de::Error),
     Format(toml::ser::Error),
     Lookup(BaseDirectoriesError),
     Generic(String),
+    CryptKey(KeyRejected),
+    Crypt,
     Git(git2::Error),
 }
 
@@ -20,10 +25,14 @@ impl Display for Error {
             Self::Daemon(errno) => write!(f, "failed to start server daemon (errno={errno})"),
             Self::IO(e) => write!(f, "IO ERROR: {e}"),
             Self::Encoding(e) => write!(f, "ENCODING ERROR: {e}"),
+            Self::Encode(e) => write!(f, "ENCODE ERROR: {e}"),
+            Self::Decode(e) => write!(f, "DECODE ERROR: {e}"),
             Self::Parse(e) => write!(f, "PARSE ERROR: {e}"),
             Self::Format(e) => write!(f, "FORMAT ERROR: {e}"),
             Self::Lookup(e) => write!(f, "LOOKUP ERROR: {e}"),
             Self::Generic(s) => write!(f, "{s}"),
+            Self::CryptKey(e) => write!(f, "CRYPT KEY ERROR: {e}"),
+            Self::Crypt => write!(f, "CRYPT ERROR"),
             Self::Git(e) => write!(f, "GIT ERROR: {e}"),
         }
     }
@@ -35,10 +44,14 @@ impl error::Error for Error {
             Self::Daemon(_) => None,
             Self::IO(e) => Some(e),
             Self::Encoding(e) => Some(e),
+            Self::Encode(e) => Some(e),
+            Self::Decode(e) => Some(e),
             Self::Parse(e) => Some(e),
             Self::Format(e) => Some(e),
             Self::Lookup(e) => Some(e),
             Self::Generic(_) => None,
+            Self::CryptKey(e) => Some(e),
+            Self::Crypt => None,
             Self::Git(e) => Some(e),
         }
     }
@@ -59,6 +72,18 @@ impl From<io::Error> for Error {
 impl From<serde_json::Error> for Error {
     fn from(value: serde_json::Error) -> Self {
         Self::Encoding(value)
+    }
+}
+
+impl From<rmp_serde::encode::Error> for Error {
+    fn from(value: rmp_serde::encode::Error) -> Self {
+        Self::Encode(value)
+    }
+}
+
+impl From<rmp_serde::decode::Error> for Error {
+    fn from(value: rmp_serde::decode::Error) -> Self {
+        Self::Decode(value)
     }
 }
 
@@ -83,6 +108,18 @@ impl From<BaseDirectoriesError> for Error {
 impl From<git2::Error> for Error {
     fn from(value: git2::Error) -> Self {
         Self::Git(value)
+    }
+}
+
+impl From<KeyRejected> for Error {
+    fn from(value: KeyRejected) -> Self {
+        Self::CryptKey(value)
+    }
+}
+
+impl From<Unspecified> for Error {
+    fn from(_: Unspecified) -> Self {
+        Self::Crypt
     }
 }
 

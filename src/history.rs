@@ -1,5 +1,6 @@
-use std::{cmp::Ordering, collections::HashMap, path::Path};
+use std::{cmp::Ordering, collections::HashMap, fs, path::Path};
 
+use aws_lc_rs::aead::{AES_256_GCM, Aad, Nonce, RandomizedNonceKey};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -53,6 +54,36 @@ impl Chunk {
 
     fn push(&mut self, entry: Entry) {
         self.entries.push(entry);
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct EncryptedChunk {
+    start: DateTime<Utc>,
+    nonce: Vec<u8>,
+    data: Vec<u8>,
+}
+
+impl EncryptedChunk {
+    fn encrypt(chunk: &Chunk, key: &[u8]) -> Result<Self> {
+        let key = RandomizedNonceKey::new(&AES_256_GCM, key)?;
+        let mut data = rmp_serde::to_vec(&chunk.entries)?;
+        let nonce = key.seal_in_place_append_tag(Aad::empty(), &mut data)?;
+        Ok(Self {
+            start: chunk.start.clone(),
+            nonce: nonce.as_ref().into(),
+            data,
+        })
+    }
+
+    fn decrypt(mut self, key: &[u8]) -> Result<Chunk> {
+        let key = RandomizedNonceKey::new(&AES_256_GCM, key)?;
+        let nonce = Nonce::try_assume_unique_for_key(&self.nonce)?;
+        let data = key.open_in_place(nonce, Aad::empty(), &mut self.data)?;
+        Ok(Chunk {
+            start: self.start,
+            entries: rmp_serde::from_slice(data)?,
+        })
     }
 }
 
@@ -119,6 +150,18 @@ impl History {
     }
 
     fn read<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
+        for entry in fs::read_dir(&path)? {
+            let entry = entry?;
+            let file_name = entry.file_name();
+            let host = file_name.to_string_lossy();
+            if entry.path().is_dir() && host != self.host.as_str() {
+                self.read_host(entry.path(), host)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn read_host<P: AsRef<Path>, S: Into<String>>(&mut self, path: P, host: S) -> Result<()> {
         panic!("not implemented")
     }
 
