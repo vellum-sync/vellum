@@ -1,13 +1,16 @@
-use std::{cmp::Ordering, collections::HashMap, fs, path::Path};
+use std::{cmp::Ordering, collections::HashMap, fs, io::Write, path::Path};
 
 use aws_lc_rs::aead::{AES_256_GCM, Aad, Nonce, RandomizedNonceKey};
 use chrono::{DateTime, Utc};
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{error::Result, sync::Syncer};
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Entry {
+    pub id: Uuid,
     pub ts: DateTime<Utc>,
     pub host: String,
     pub cmd: String,
@@ -16,6 +19,7 @@ pub struct Entry {
 impl Entry {
     fn new<H: Into<String>, C: Into<String>>(host: H, cmd: C) -> Self {
         Self {
+            id: Uuid::now_v7(),
             ts: Utc::now(),
             host: host.into(),
             cmd: cmd.into(),
@@ -166,6 +170,35 @@ impl History {
     }
 
     fn write<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        panic!("not implements")
+        // TODO(jp3): Get a real encryption key ...
+        let key = vec![];
+
+        // First we need to make sure that there is actually anything to write.
+        let chunks = match self.history.get(&self.host) {
+            Some(c) => c,
+            None => return Ok(()),
+        };
+
+        for (day, chunks) in chunks
+            .iter()
+            .filter(|chunk| chunk.start < self.last_write)
+            .chunk_by(|chunk| format!("{}", chunk.start.format("%Y-%m-%d")))
+            .into_iter()
+        {
+            let filename = Path::new(path.as_ref()).join(day);
+            let mut f = fs::File::options()
+                .append(true)
+                .create(true)
+                .open(filename)?;
+            for chunk in chunks.map(|chunk| EncryptedChunk::encrypt(chunk, &key)) {
+                let data = rmp_serde::to_vec(&chunk?)?;
+                let len = data.len() as u64;
+                f.write_all(&len.to_be_bytes())?;
+                f.write_all(&data)?;
+            }
+            f.flush()?;
+        }
+
+        Ok(())
     }
 }
