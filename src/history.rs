@@ -1,4 +1,10 @@
-use std::{cmp::Ordering, collections::HashMap, fs, io::Write, path::Path};
+use std::{
+    cmp::Ordering,
+    collections::HashMap,
+    fs::{self, File},
+    io::{self, Read, Write},
+    path::Path,
+};
 
 use aws_lc_rs::aead::{AES_256_GCM, Aad, Nonce, RandomizedNonceKey};
 use chrono::{DateTime, Utc};
@@ -176,7 +182,42 @@ impl History {
     }
 
     fn read_host<P: AsRef<Path>, S: Into<String>>(&mut self, path: P, host: S) -> Result<()> {
-        panic!("not implemented")
+        // TODO(jp3): Get a real encryption key ...
+        let key: Vec<u8> = vec![];
+
+        let last_read_day = format!("{}", self.last_read.format("%Y-%m-%d"));
+
+        let chunks = self.history.entry(host.into()).or_default();
+
+        for entry in fs::read_dir(&path)? {
+            let entry = entry?;
+            let day = entry.file_name();
+            if day.to_string_lossy().as_ref() < last_read_day.as_str() {
+                // skip any files that have already been read
+                continue;
+            }
+
+            // read chunks from the file, ignoring any that we have already
+            // read.
+            let mut new_chunks = HistoryFile::open(entry.path())?
+                .filter(|chunk| match chunk {
+                    Ok(c) => c.start >= self.last_read,
+                    Err(_) => true,
+                })
+                .map(|chunk| match chunk {
+                    Ok(c) => c.decrypt(&key),
+                    Err(e) => Err(e),
+                })
+                .collect::<Result<Vec<Chunk>>>()?;
+
+            chunks.append(&mut new_chunks);
+        }
+
+        // we might have read chunks out of order, but we want them in time
+        // order, so sort them.
+        chunks.sort_unstable_by_key(|chunk| chunk.start);
+
+        Ok(())
     }
 
     fn write<P: AsRef<Path>>(&self, path: P) -> Result<()> {
@@ -199,7 +240,7 @@ impl History {
             .chunk_by(|chunk| format!("{}", chunk.start.format("%Y-%m-%d")))
             .into_iter()
         {
-            let mut f = fs::File::options()
+            let mut f = File::options()
                 .append(true)
                 .create(true)
                 .open(Path::new(&dir).join(day))?;
@@ -213,5 +254,66 @@ impl History {
         }
 
         Ok(())
+    }
+}
+
+struct HistoryFile {
+    f: File,
+    complete: bool,
+}
+
+impl HistoryFile {
+    fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Ok(Self {
+            f: File::open(path)?,
+            complete: false,
+        })
+    }
+
+    fn read(&mut self) -> Result<Option<EncryptedChunk>> {
+        let mut buf = [0 as u8; 8];
+        let mut read = 0;
+
+        while read < buf.len() {
+            let n = match self.f.read(&mut buf[read..]) {
+                Ok(n) => n,
+                Err(e) => match e.kind() {
+                    io::ErrorKind::Interrupted => continue,
+                    _ => return Err(e.into()),
+                },
+            };
+            if n == 0 {
+                return Ok(None);
+            };
+            read += n
+        }
+
+        let len = u64::from_be_bytes(buf);
+
+        let mut data = vec![0u8; len as usize];
+        self.f.read_exact(&mut data)?;
+
+        Ok(Some(rmp_serde::from_slice(&data)?))
+    }
+}
+
+impl Iterator for HistoryFile {
+    type Item = Result<EncryptedChunk>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.complete {
+            return None;
+        }
+        match self.read() {
+            Ok(Some(c)) => Some(Ok(c)),
+            Ok(None) => {
+                self.complete = true;
+                None
+            }
+            Err(e) => {
+                self.complete = true;
+                Some(Err(e))
+            }
+        }
     }
 }
