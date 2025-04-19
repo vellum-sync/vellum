@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     env, fs,
     path::{Path, PathBuf},
+    time::Duration,
 };
 use toml;
 use xdg::BaseDirectories;
@@ -36,6 +37,11 @@ pub struct Sync {
     /// SSH private key file used for SSH git auth
     #[serde(default)]
     pub ssh_key: String,
+
+    /// How often should we run an automatic sync?
+    #[serde(default = "default_sync_interval")]
+    #[serde(with = "humantime_serde")]
+    pub interval: Duration,
 
     /// Path of the sync git checkout, non-absolute paths are relative to the
     /// state directory.
@@ -106,6 +112,7 @@ impl Default for Sync {
             enabled: default_sync_enabled(),
             url: "".to_string(),
             ssh_key: "".to_string(),
+            interval: default_sync_interval(),
             path: default_sync_path(),
         }
     }
@@ -127,6 +134,10 @@ fn default_hostname() -> PathBuf {
 
 fn default_sync_enabled() -> bool {
     true
+}
+
+fn default_sync_interval() -> Duration {
+    Duration::from_secs(30)
 }
 
 fn default_sync_path() -> PathBuf {

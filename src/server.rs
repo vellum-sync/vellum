@@ -10,6 +10,7 @@ use std::{
 use clap;
 use fork::{Fork, daemon};
 use log::{debug, error, info};
+use ticker::Ticker;
 
 use crate::{
     api::{Connection, Listener, Message},
@@ -84,10 +85,35 @@ impl Server {
         let host = cfg.hostname.to_string_lossy().to_string();
         let syncer = get_syncer(cfg)?;
 
-        Ok(Self {
+        let s = Self {
             cfg: cfg.clone(),
             history: Arc::new(Mutex::new(History::load(host, syncer)?)),
-        })
+        };
+        s.start_background_sync();
+
+        Ok(s)
+    }
+
+    fn start_background_sync(&self) {
+        if self.cfg.sync.interval.is_zero() {
+            // don't start background sync if interval is zero
+            return;
+        }
+        let s = self.clone();
+        thread::spawn(move || s.background_sync());
+    }
+
+    fn background_sync(&self) {
+        debug!(
+            "starting background sync with {:?} interval",
+            self.cfg.sync.interval
+        );
+        let ticker = Ticker::new(0.., self.cfg.sync.interval);
+        for _ in ticker {
+            if let Err(e) = self.sync(false) {
+                error!("Failed to run background sync: {e}");
+            }
+        }
     }
 
     fn serve(&self) -> Result<()> {
