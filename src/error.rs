@@ -1,6 +1,7 @@
-use std::{error, fmt::Display, io, result};
+use std::{env::VarError, error, fmt::Display, io, result};
 
 use aws_lc_rs::error::{KeyRejected, Unspecified};
+use base64::DecodeError;
 use xdg::BaseDirectoriesError;
 
 #[derive(Debug)]
@@ -17,6 +18,8 @@ pub enum Error {
     CryptKey(KeyRejected),
     Crypt,
     Git(git2::Error),
+    Base64(DecodeError),
+    EnvVar(VarError),
 }
 
 impl Display for Error {
@@ -34,6 +37,8 @@ impl Display for Error {
             Self::CryptKey(e) => write!(f, "CRYPT KEY ERROR: {e}"),
             Self::Crypt => write!(f, "CRYPT ERROR"),
             Self::Git(e) => write!(f, "GIT ERROR: {e}"),
+            Self::Base64(e) => write!(f, "BASE64 DECODE ERROR: {e}"),
+            Self::EnvVar(e) => write!(f, "ENVIRONMENT VARIABLE ERROR: {e}"),
         }
     }
 }
@@ -53,6 +58,8 @@ impl error::Error for Error {
             Self::CryptKey(e) => Some(e),
             Self::Crypt => None,
             Self::Git(e) => Some(e),
+            Self::Base64(e) => Some(e),
+            Self::EnvVar(e) => Some(e),
         }
     }
 }
@@ -120,6 +127,18 @@ impl From<KeyRejected> for Error {
 impl From<Unspecified> for Error {
     fn from(_: Unspecified) -> Self {
         Self::Crypt
+    }
+}
+
+impl From<DecodeError> for Error {
+    fn from(value: DecodeError) -> Self {
+        Self::Base64(value)
+    }
+}
+
+impl From<VarError> for Error {
+    fn from(value: VarError) -> Self {
+        Self::EnvVar(value)
     }
 }
 

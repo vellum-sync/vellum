@@ -6,6 +6,7 @@ description = "Records the history of commands run"
 
 [dependencies]
 aws-lc-rs = "1.13.0"
+base64 = "0.22.1"
 chrono = { version = "0.4.40", features = ["serde"] }
 clap = { version = "4.5.35", features = ["derive", "unicode", "wrap_help"] }
 clap-cargo = "0.15.2"

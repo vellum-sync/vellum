@@ -6,8 +6,6 @@ use std::{
 use toml;
 use xdg::BaseDirectories;
 
-use crate::error::Error;
-
 pub type Result = crate::error::Result<Config>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -77,7 +75,7 @@ impl Config {
         }
     }
 
-    pub fn show(&self) -> std::result::Result<(), Error> {
+    pub fn show(&self) -> crate::error::Result<()> {
         let cfg = toml::to_string_pretty(self)?;
         print!("{cfg}");
         Ok(())

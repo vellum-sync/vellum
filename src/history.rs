@@ -1,12 +1,18 @@
 use std::{
     cmp::Ordering,
     collections::HashMap,
+    env,
     fs::{self, File},
     io::{self, Read, Write},
     path::Path,
 };
 
-use aws_lc_rs::aead::{AES_256_GCM, Aad, Nonce, RandomizedNonceKey};
+use aws_lc_rs::{
+    aead::{AES_256_GCM, Aad, Nonce, RandomizedNonceKey},
+    cipher::AES_256_KEY_LEN,
+    rand,
+};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
@@ -97,6 +103,17 @@ impl EncryptedChunk {
     }
 }
 
+pub fn generate_key() -> Result<String> {
+    let mut buf = [0 as u8; AES_256_KEY_LEN];
+    rand::fill(&mut buf)?;
+    Ok(BASE64_STANDARD.encode(&buf))
+}
+
+pub fn get_key() -> Result<Vec<u8>> {
+    let key = env::var("VELLUM_KEY")?;
+    Ok(BASE64_STANDARD.decode(&key)?)
+}
+
 pub struct History {
     host: String,
     history: HashMap<String, Vec<Chunk>>,
@@ -182,8 +199,7 @@ impl History {
     }
 
     fn read_host<P: AsRef<Path>, S: Into<String>>(&mut self, path: P, host: S) -> Result<()> {
-        // TODO(jp3): Get a real encryption key ...
-        let key: Vec<u8> = vec![];
+        let key = get_key()?;
 
         let last_read_day = format!("{}", self.last_read.format("%Y-%m-%d"));
 
@@ -221,8 +237,7 @@ impl History {
     }
 
     fn write<P: AsRef<Path>>(&self, path: P) -> Result<()> {
-        // TODO(jp3): Get a real encryption key ...
-        let key = vec![];
+        let key = get_key()?;
 
         // First we need to make sure that there is actually anything to write.
         let chunks = match self.history.get(&self.host) {
