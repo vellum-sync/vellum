@@ -19,6 +19,7 @@ use crate::{
     api::{Connection, Listener, Message},
     config::Config,
     error::Result,
+    history,
     sync::{Syncer, Version, get_syncer},
 };
 
@@ -30,6 +31,14 @@ pub struct Args {
 }
 
 pub fn run(config: &Config, args: Args) -> Result<()> {
+    // make sure that we have a crypt key before trying to run a server,
+    // otherwise things aren't going to go very well ...
+    if let Err(e) = history::get_key() {
+        error!("Unable to get crypt key from $VELLUM_KEY, refusing to start server:");
+        error!("  {e}");
+        exit(1);
+    }
+
     if args.foreground {
         start(config)
     } else if let Fork::Child = daemon(false, false)? {

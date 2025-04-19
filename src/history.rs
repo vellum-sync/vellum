@@ -18,7 +18,10 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{error::Result, sync::Syncer};
+use crate::{
+    error::{Error, Result},
+    sync::Syncer,
+};
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Entry {
@@ -110,8 +113,15 @@ pub fn generate_key() -> Result<String> {
 }
 
 pub fn get_key() -> Result<Vec<u8>> {
-    let key = env::var("VELLUM_KEY")?;
-    Ok(BASE64_STANDARD.decode(&key)?)
+    let vellum_key = env::var("VELLUM_KEY")?;
+    let key = BASE64_STANDARD.decode(&vellum_key)?;
+    if key.len() != AES_256_KEY_LEN {
+        return Err(Error::Generic(format!(
+            "key should be {AES_256_KEY_LEN} bytes, got {}",
+            key.len()
+        )));
+    }
+    Ok(key)
 }
 
 pub struct History {
