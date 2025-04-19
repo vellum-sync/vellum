@@ -90,6 +90,11 @@ impl Git {
             .name()
             .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
 
+        let upstream_ref = self.repo.branch_upstream_name(ref_name)?;
+        let upstream_ref_name = upstream_ref
+            .as_str()
+            .ok_or_else(|| Error::Generic(format!("unable to get upstream_ref_name")))?;
+
         let git_config = git2::Config::open_default()?;
 
         let mut cbs = RemoteCallbacks::new();
@@ -118,7 +123,8 @@ impl Git {
         })
         .update_tips(|name, old, new| {
             debug!("update tip: name: {name} old: {old:?} new: {new:?}");
-            if name == ref_name {
+            debug!("name: {name}, ref_name: {ref_name}, upstream_ref_name: {upstream_ref_name}");
+            if name == upstream_ref_name {
                 changes = true;
             }
             true
@@ -134,6 +140,8 @@ impl Git {
         // make sure that the update_tips callback is gone, since it implicitly
         // borrows changes.
         drop(opts);
+
+        debug!("fetch has changes: {changes}");
 
         Ok(changes)
     }
