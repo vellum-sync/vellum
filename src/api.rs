@@ -50,10 +50,6 @@ impl Connection {
         self.receive()
     }
 
-    pub fn requests(&mut self) -> Requests<'_> {
-        Requests { c: self }
-    }
-
     pub fn store(&mut self, cmd: String) -> Result<()> {
         let msg = Message::Store(cmd);
         match self.request(&msg)? {
@@ -103,18 +99,6 @@ impl Connection {
     pub fn error(&mut self, msg: String) -> Result<()> {
         let msg = Message::Error(msg);
         self.send(&msg)
-    }
-}
-
-pub struct Requests<'a> {
-    c: &'a mut Connection,
-}
-
-impl<'a> Iterator for Requests<'a> {
-    type Item = Result<Message>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        Some(self.c.receive())
     }
 }
 
