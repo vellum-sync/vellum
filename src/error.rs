@@ -20,6 +20,7 @@ pub enum Error {
     Git(git2::Error),
     Base64(DecodeError),
     EnvVar(VarError),
+    UUID(uuid::Error),
 }
 
 impl Display for Error {
@@ -39,6 +40,7 @@ impl Display for Error {
             Self::Git(e) => write!(f, "GIT ERROR: {e}"),
             Self::Base64(e) => write!(f, "BASE64 DECODE ERROR: {e}"),
             Self::EnvVar(e) => write!(f, "ENVIRONMENT VARIABLE ERROR: {e}"),
+            Self::UUID(e) => write!(f, "UUID ERROR: {e}"),
         }
     }
 }
@@ -60,6 +62,7 @@ impl error::Error for Error {
             Self::Git(e) => Some(e),
             Self::Base64(e) => Some(e),
             Self::EnvVar(e) => Some(e),
+            Self::UUID(e) => Some(e),
         }
     }
 }
@@ -139,6 +142,12 @@ impl From<DecodeError> for Error {
 impl From<VarError> for Error {
     fn from(value: VarError) -> Self {
         Self::EnvVar(value)
+    }
+}
+
+impl From<uuid::Error> for Error {
+    fn from(value: uuid::Error) -> Self {
+        Self::UUID(value)
     }
 }
 

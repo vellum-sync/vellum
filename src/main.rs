@@ -50,6 +50,9 @@ enum Commands {
         session: bool,
     },
 
+    /// Move through the history relative to a given point
+    Move(client::MoveArgs),
+
     /// Display the vellum configuration
     Config,
 
@@ -107,6 +110,7 @@ fn main() {
     if let Err(e) = match cli.command {
         Commands::Store { shell_command } => client::store(&config, shell_command),
         Commands::History { session } => client::history(&config, session),
+        Commands::Move(args) => client::do_move(&config, args),
         Commands::Config => config.show(),
         Commands::Init(args) => init::init(args),
         Commands::Sync { force } => client::sync(&config, force),

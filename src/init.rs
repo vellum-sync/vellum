@@ -18,6 +18,9 @@ pub struct Args {
 
 #[derive(Debug, clap::Subcommand)]
 enum Commands {
+    /// Output a setup script for bash
+    BASH,
+
     /// Output a setup script for zsh
     ZSH,
 
@@ -30,10 +33,19 @@ enum Commands {
 
 pub fn init(args: Args) -> Result<()> {
     match args.command {
+        Commands::BASH => show_bash(),
         Commands::ZSH => show_zsh(),
         Commands::Key => show_key(),
         Commands::Session => show_session(),
     }
+}
+
+fn show_bash() -> Result<()> {
+    debug!("init bash ...");
+    let script = assets::get_file("init.bash")
+        .ok_or_else(|| Error::Generic("bash init script missing".to_string()))?;
+    stdout().write_all(script.contents())?;
+    Ok(())
 }
 
 fn show_zsh() -> Result<()> {
