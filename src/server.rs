@@ -1,5 +1,7 @@
 use std::{
     env::{self, current_exe},
+    fs::{self, File},
+    io::Write,
     os::unix::process::CommandExt,
     path::Path,
     process::{self, Command, exit},
@@ -8,6 +10,7 @@ use std::{
 };
 
 use clap;
+use fd_lock::RwLock;
 use fork::{Fork, daemon};
 use log::{debug, error, info};
 use ticker::Ticker;
@@ -17,6 +20,7 @@ use crate::{
     config::Config,
     error::Result,
     history::{self, Entry, History},
+    process::server_is_running,
     sync::get_syncer,
 };
 
@@ -25,6 +29,10 @@ pub struct Args {
     /// Run the server in the foreground
     #[arg(short, long)]
     foreground: bool,
+
+    /// Try to start the server, even if one appears to be running
+    #[arg(long)]
+    force: bool,
 }
 
 pub fn run(config: &Config, args: Args) -> Result<()> {
@@ -36,10 +44,15 @@ pub fn run(config: &Config, args: Args) -> Result<()> {
         exit(1);
     }
 
+    if !args.force && server_is_running(config)? {
+        error!("Server is already running!");
+        exit(1);
+    }
+
     if args.foreground {
         start(config)
     } else if let Fork::Child = daemon(false, false)? {
-        background(config);
+        background(config, args.force);
         exit(0);
     } else {
         exit(0);
@@ -50,12 +63,35 @@ fn start(config: &Config) -> Result<()> {
     let pid = process::id();
     debug!("server: config={config:?} pid={pid}");
 
+    // try and lock the pid file, this will fail if a server is already running.
+    debug!("create pid file");
+    let pid_file = Path::new(&config.state_dir).join("server.pid");
+    let mut f = RwLock::new(File::options().create(true).write(true).open(pid_file)?);
+    let mut pid_lock = f.try_write()?;
+    write!(pid_lock, "{}", pid)?;
+    pid_lock.flush()?;
+
+    // clean up an old socket file if there is one. We should only get here if
+    // we got the pid lock.
+    debug!("check for old server socket");
+    let server_sock = Path::new(&config.state_dir).join("server.sock");
+    if fs::exists(&server_sock)? {
+        debug!("remove old server socket");
+        fs::remove_file(&server_sock)?;
+    }
+
+    debug!("create server");
     let server = Server::new(config)?;
 
-    server.serve()
+    debug!("start server");
+    server.serve()?;
+
+    drop(pid_lock);
+
+    Ok(())
 }
 
-fn background(config: &Config) {
+fn background(config: &Config, force: bool) {
     let log_file = Path::new(&config.state_dir).join("server.log");
     let exe = current_exe().expect("failed to get executable path");
     let mut cmd = Command::new(exe);
@@ -65,10 +101,11 @@ fn background(config: &Config) {
     if let Ok(value) = env::var("VELLUM_SERVER_LOG") {
         cmd.env("VELLUM_LOG", value);
     };
-    let _ = cmd
-        .args(["server", "--foreground"])
-        .env("VELLUM_LOG_FILE", log_file)
-        .exec();
+    cmd.args(["server", "--foreground"]);
+    if force {
+        cmd.arg("--force");
+    }
+    let _ = cmd.env("VELLUM_LOG_FILE", log_file).exec();
 }
 
 #[derive(Debug, Clone)]

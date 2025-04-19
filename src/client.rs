@@ -3,7 +3,13 @@ use std::{collections::HashSet, env};
 use log::debug;
 use uuid::Uuid;
 
-use crate::{api::Connection, config::Config, error::Result, history::Entry};
+use crate::{
+    api::Connection,
+    config::Config,
+    error::Result,
+    history::Entry,
+    process::{server_is_running, wait_for_server_exit},
+};
 
 fn get_session() -> String {
     match env::var("VELLUM_SESSION") {
@@ -18,8 +24,15 @@ pub fn store(cfg: &Config, cmd: String) -> Result<()> {
 }
 
 pub fn stop_server(cfg: &Config, no_sync: bool) -> Result<()> {
+    if !server_is_running(cfg)? {
+        debug!("server isn't running");
+        return Ok(());
+    }
+    debug!("server is running");
     let mut conn = Connection::new(cfg)?;
-    conn.exit(no_sync)
+    conn.exit(no_sync)?;
+    debug!("wait for server exit");
+    wait_for_server_exit(cfg)
 }
 
 #[derive(clap::Args, Debug)]

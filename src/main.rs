@@ -11,6 +11,7 @@ mod config;
 mod error;
 mod history;
 mod init;
+mod process;
 mod server;
 mod sync;
 

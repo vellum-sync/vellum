@@ -1,4 +1,4 @@
-use std::{env::VarError, error, fmt::Display, io, result};
+use std::{env::VarError, error, fmt::Display, io, num::ParseIntError, result};
 
 use aws_lc_rs::error::{KeyRejected, Unspecified};
 use base64::DecodeError;
@@ -21,6 +21,7 @@ pub enum Error {
     Base64(DecodeError),
     EnvVar(VarError),
     UUID(uuid::Error),
+    ParseInt(ParseIntError),
 }
 
 impl Display for Error {
@@ -41,6 +42,7 @@ impl Display for Error {
             Self::Base64(e) => write!(f, "BASE64 DECODE ERROR: {e}"),
             Self::EnvVar(e) => write!(f, "ENVIRONMENT VARIABLE ERROR: {e}"),
             Self::UUID(e) => write!(f, "UUID ERROR: {e}"),
+            Self::ParseInt(e) => write!(f, "PARSE INT ERROR: {e}"),
         }
     }
 }
@@ -63,6 +65,7 @@ impl error::Error for Error {
             Self::Base64(e) => Some(e),
             Self::EnvVar(e) => Some(e),
             Self::UUID(e) => Some(e),
+            Self::ParseInt(e) => Some(e),
         }
     }
 }
@@ -148,6 +151,12 @@ impl From<VarError> for Error {
 impl From<uuid::Error> for Error {
     fn from(value: uuid::Error) -> Self {
         Self::UUID(value)
+    }
+}
+
+impl From<ParseIntError> for Error {
+    fn from(value: ParseIntError) -> Self {
+        Self::ParseInt(value)
     }
 }
 
