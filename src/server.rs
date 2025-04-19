@@ -230,6 +230,12 @@ impl Server {
                     error!("Failed to send ack: {e}");
                 };
             }
+            Message::Ping => {
+                info!("Received ping request");
+                if let Err(e) = conn.pong() {
+                    error!("Failed to send pong: {e}");
+                }
+            }
             r => {
                 error!("received unknown request: {r:?}");
                 if let Err(e) = conn.error(format!("unknown request: {r:?}")) {

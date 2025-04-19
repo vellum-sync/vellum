@@ -56,6 +56,13 @@ enum Commands {
     /// Commands to setup/initialise vellum
     Init(init::Args),
 
+    /// Ping the server
+    Ping {
+        /// Wait for the ping to succeed
+        #[arg(short, long)]
+        wait: bool,
+    },
+
     /// Request the server sync the history immediately
     Sync {
         /// Force a sync, even if things seem to be up-to-date
@@ -110,6 +117,7 @@ fn main() {
         Commands::Move(args) => client::do_move(&config, args),
         Commands::Config => config.show(),
         Commands::Init(args) => init::init(args),
+        Commands::Ping { wait } => client::ping(&config, wait),
         Commands::Sync { force } => client::sync(&config, force),
         Commands::Server(args) => server::run(&config, args),
         Commands::Stop { no_sync } => client::stop_server(&config, no_sync),

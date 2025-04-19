@@ -1,6 +1,6 @@
-use std::{collections::HashSet, env};
+use std::{collections::HashSet, env, thread::sleep, time::Duration};
 
-use log::debug;
+use log::{debug, info};
 use uuid::Uuid;
 
 use crate::{
@@ -138,5 +138,27 @@ pub fn do_move(cfg: &Config, args: MoveArgs) -> Result<()> {
     }
     println!("{}", entry.cmd);
 
+    Ok(())
+}
+
+pub fn ping(cfg: &Config, wait: bool) -> Result<()> {
+    debug!("ping: wait: {wait}");
+    loop {
+        match try_ping(cfg) {
+            Ok(_) => return Ok(()),
+            Err(e) => {
+                if !wait {
+                    return Err(e);
+                }
+            }
+        }
+        sleep(Duration::from_millis(100));
+    }
+}
+
+fn try_ping(cfg: &Config) -> Result<()> {
+    let mut conn = Connection::new(cfg)?;
+    conn.ping()?;
+    info!("got pong from server");
     Ok(())
 }

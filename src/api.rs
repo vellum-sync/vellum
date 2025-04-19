@@ -101,6 +101,20 @@ impl Connection {
         let msg = Message::Error(msg);
         self.send(&msg)
     }
+
+    pub fn ping(&mut self) -> Result<()> {
+        let msg = Message::Ping;
+        match self.request(&msg)? {
+            Message::Pong => Ok(()),
+            Message::Error(e) => Err(Error::Generic(e)),
+            m => Err(Error::Generic(format!("unexpected response: {m:?}"))),
+        }
+    }
+
+    pub fn pong(&mut self) -> Result<()> {
+        let msg = Message::Pong;
+        self.send(&msg)
+    }
 }
 
 #[derive(Debug)]
@@ -154,4 +168,6 @@ pub enum Message {
     History(Vec<Entry>),
     Sync(bool),
     Exit(bool),
+    Ping,
+    Pong,
 }
