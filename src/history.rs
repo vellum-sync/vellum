@@ -256,9 +256,11 @@ impl History {
                 })
                 .collect::<Result<Vec<Chunk>>>()?;
 
-            chunks.append(&mut new_chunks);
-
-            added = true;
+            if !new_chunks.is_empty() {
+                // we only need to do anything if we read some new chunks
+                chunks.append(&mut new_chunks);
+                added = true;
+            }
         }
 
         // we might have read chunks out of order, but we want them in time
