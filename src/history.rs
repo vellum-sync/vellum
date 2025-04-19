@@ -15,6 +15,7 @@ use aws_lc_rs::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
+use log::debug;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -201,12 +202,16 @@ impl History {
     fn read<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         let mut added = false;
 
+        // if we have no history data at all, then we want to read our own past
+        // history too, as this is probably a new server start.
+        let empty = self.history.is_empty();
+
         // read any new data from disk
         for entry in fs::read_dir(&path)? {
             let entry = entry?;
             let file_name = entry.file_name();
             let host = file_name.to_string_lossy();
-            if entry.path().is_dir() && host != self.host.as_str() {
+            if entry.path().is_dir() && (empty || host != self.host.as_str()) {
                 added |= self.read_host(entry.path(), host)?;
             }
         }
@@ -220,11 +225,14 @@ impl History {
     }
 
     fn read_host<P: AsRef<Path>, S: Into<String>>(&mut self, path: P, host: S) -> Result<bool> {
+        let host = host.into();
+        debug!("read chunks for {host}");
+
         let key = get_key()?;
 
         let last_read_day = format!("{}", self.last_read.format("%Y-%m-%d"));
 
-        let chunks = self.history.entry(host.into()).or_default();
+        let chunks = self.history.entry(host).or_default();
 
         let mut added = false;
         for entry in fs::read_dir(&path)? {
@@ -257,6 +265,8 @@ impl History {
         // order, so sort them.
         chunks.sort_unstable_by_key(|chunk| chunk.start);
 
+        debug!("added={added}");
+
         Ok(added)
     }
 
@@ -269,16 +279,19 @@ impl History {
             None => return Ok(()),
         };
 
+        debug!("We have {} total chunks", chunks.len());
+
         // make sure host directory exists
         let dir = Path::new(path.as_ref()).join(&self.host);
         fs::create_dir_all(&dir)?;
 
         for (day, chunks) in chunks
             .iter()
-            .filter(|chunk| chunk.start < self.last_write)
+            .filter(|chunk| chunk.start > self.last_write)
             .chunk_by(|chunk| format!("{}", chunk.start.format("%Y-%m-%d")))
             .into_iter()
         {
+            debug!("write chunks for {day}");
             let mut f = File::options()
                 .append(true)
                 .create(true)
