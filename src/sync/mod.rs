@@ -1,10 +1,5 @@
-use std::{
-    fmt,
-    fs::exists,
-    path::{Path, PathBuf},
-};
+use std::{fmt, fs::exists, path::PathBuf};
 
-use git2::Oid;
 use log::debug;
 
 use crate::{config::Config, error::Result};
@@ -12,24 +7,7 @@ use crate::{config::Config, error::Result};
 mod dummy;
 mod git;
 
-#[derive(Debug)]
-pub struct Version {
-    oid: Oid,
-}
-
-#[derive(Debug)]
-pub struct Data {
-    pub version: Version,
-    pub data: Vec<u8>,
-}
-
 pub trait Syncer: fmt::Debug + Send {
-    fn store(&self, host: &str, data: &[u8], force: bool) -> Result<()>;
-
-    fn get_newer(&self, host: &str, ver: Option<&Version>) -> Result<Option<Data>>;
-
-    fn get_external_hosts(&self, host: &str) -> Result<Vec<String>>;
-
     fn refresh(&self) -> Result<PathBuf>;
 
     fn push_changes(&self, host: &str, force: bool) -> Result<()>;

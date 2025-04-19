@@ -1,7 +1,5 @@
 use std::{
-    fmt,
-    fs::{self, File, exists, read_dir},
-    io::{Read, Write},
+    fmt, fs,
     path::{Path, PathBuf},
 };
 
@@ -16,7 +14,7 @@ use crate::{
     error::{Error, Result},
 };
 
-use super::{Data, Syncer, Version};
+use super::Syncer;
 
 pub struct Git {
     path: PathBuf,
@@ -315,73 +313,6 @@ impl fmt::Debug for Git {
 }
 
 impl Syncer for Git {
-    fn store(&self, host: &str, data: &[u8], force: bool) -> Result<()> {
-        self.pull()?;
-
-        let mut index = self.repo.index()?;
-        let target = Path::new("hosts").join(host);
-        let path = Path::new(&self.path).join(&target);
-        fs::create_dir_all(path.parent().unwrap())?;
-        {
-            // write contents to file, and make sure it's on disk before calling
-            // add_path.
-            let mut f = File::create(&path)?;
-            f.write_all(data)?;
-            f.flush()?;
-        }
-        index.add_path(&target)?;
-        index.write()?;
-
-        let message = if force {
-            format!("update {host} (forced)")
-        } else {
-            format!("update {host}")
-        };
-
-        if let Some(_) = self.commit(&message, force)? {
-            self.push()?;
-        }
-
-        Ok(())
-    }
-
-    fn get_newer(&self, host: &str, ver: Option<&Version>) -> Result<Option<Data>> {
-        self.pull()?;
-
-        let target = Path::new("hosts").join(host);
-        let path = Path::new(&self.path).join(&target);
-        if !exists(&path)? {
-            // there is no history for the specified host currently.
-            return Ok(None);
-        }
-        // TODO(jp3): need to get the last modified version of the file
-        let version = Version { oid: Oid::zero() };
-        if let Some(_prev) = ver {
-            // TODO(jp3): we should check to see if the file has changed since
-            // prev, and return None if not ...
-        }
-        let mut data = Vec::new();
-        let mut f = File::open(&path)?;
-        f.read_to_end(&mut data)?;
-        Ok(Some(Data { version, data }))
-    }
-
-    fn get_external_hosts(&self, host: &str) -> Result<Vec<String>> {
-        self.pull()?;
-
-        let mut hosts = Vec::new();
-        let path = Path::new(&self.path).join("hosts");
-
-        for entry in read_dir(&path)? {
-            let entry = entry?;
-            if !entry.path().is_dir() && entry.file_name() != host {
-                hosts.push(entry.file_name().to_string_lossy().to_string());
-            }
-        }
-
-        Ok(hosts)
-    }
-
     fn refresh(&self) -> Result<PathBuf> {
         self.pull()?;
         Ok(Path::new(&self.path).join("hosts"))

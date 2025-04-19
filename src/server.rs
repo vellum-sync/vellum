@@ -1,6 +1,4 @@
 use std::{
-    cmp::Ordering,
-    collections::HashMap,
     env::{self, current_exe},
     os::unix::process::CommandExt,
     path::Path,
@@ -9,18 +7,16 @@ use std::{
     thread,
 };
 
-use chrono::{DateTime, Utc};
 use clap;
 use fork::{Fork, daemon};
 use log::{debug, error, info};
-use serde::{Deserialize, Serialize};
 
 use crate::{
     api::{Connection, Listener, Message},
     config::Config,
     error::Result,
     history::{self, History},
-    sync::{Syncer, Version, get_syncer},
+    sync::get_syncer,
 };
 
 #[derive(clap::Args, Debug, Default)]
@@ -72,134 +68,6 @@ fn background(config: &Config) {
         .args(["server", "--foreground"])
         .env("VELLUM_LOG_FILE", log_file)
         .exec();
-}
-
-#[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
-struct Entry {
-    ts: DateTime<Utc>,
-    host: String,
-    cmd: String,
-}
-
-impl Entry {
-    fn new(host: String, cmd: String) -> Self {
-        let ts = Utc::now();
-        Self { ts, host, cmd }
-    }
-}
-
-impl Ord for Entry {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.ts
-            .cmp(&other.ts)
-            .then(self.host.cmp(&other.host))
-            .then(self.cmd.cmp(&other.cmd))
-    }
-}
-
-impl PartialOrd for Entry {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-#[derive(Debug)]
-struct ExternalHistory {
-    latest: Version,
-    history: Vec<Entry>,
-}
-
-impl ExternalHistory {
-    fn version(&self, force: bool) -> Option<&Version> {
-        if force { None } else { Some(&self.latest) }
-    }
-}
-
-#[derive(Debug)]
-struct State {
-    host: String,
-    changed: bool,
-    local: Vec<Entry>,
-    external: HashMap<String, ExternalHistory>,
-    syncer: Box<dyn Syncer>,
-    history: Vec<String>,
-}
-
-impl State {
-    fn new(host: String, syncer: Box<dyn Syncer>) -> Result<Self> {
-        let mut s = Self {
-            host,
-            changed: false,
-            local: Vec::new(),
-            external: HashMap::new(),
-            syncer,
-            history: Vec::new(),
-        };
-        s.load()?;
-        Ok(s)
-    }
-
-    fn load(&mut self) -> Result<()> {
-        if let Some(data) = self.syncer.get_newer(&self.host, None)? {
-            self.local = serde_json::from_slice(&data.data)?;
-        }
-
-        for host in self.syncer.get_external_hosts(&self.host)? {
-            if let Some(data) = self.syncer.get_newer(&host, None)? {
-                let history = ExternalHistory {
-                    latest: data.version,
-                    history: serde_json::from_slice(&data.data)?,
-                };
-                self.external.insert(host, history);
-            }
-        }
-
-        Ok(())
-    }
-
-    fn combined_history(&self) -> Vec<Entry> {
-        let mut combined = self.local.clone();
-        for (_, external) in self.external.iter() {
-            combined.extend_from_slice(&external.history);
-        }
-        combined.sort_unstable();
-        combined
-    }
-
-    fn store(&mut self, host: String, cmd: String) {
-        self.local.push(Entry::new(host, cmd.clone()));
-        self.history.push(cmd);
-        self.changed = true
-    }
-
-    fn sync_local(&mut self, force: bool) -> Result<()> {
-        debug!("sync_local changed: {} force: {force}", self.changed);
-        if self.changed || force {
-            let data = serde_json::to_vec(&self.local)?;
-            self.syncer.store(&self.host, &data, force)?;
-        }
-        Ok(())
-    }
-
-    fn sync(&mut self, force: bool) -> Result<()> {
-        self.sync_local(force)?;
-        for (host, external) in self.external.iter_mut() {
-            if let Some(data) = self.syncer.get_newer(&host, external.version(force))? {
-                let history: Vec<Entry> = serde_json::from_slice(&data.data)?;
-                external.latest = data.version;
-                external.history = history;
-            }
-        }
-        // TODO(jp3): How do we learn about new hosts, or ones that have gone?
-
-        self.history = self
-            .combined_history()
-            .iter()
-            .map(|e| e.cmd.clone())
-            .collect();
-
-        Ok(())
-    }
 }
 
 #[derive(Debug, Clone)]
