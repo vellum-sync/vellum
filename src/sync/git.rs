@@ -36,7 +36,7 @@ impl Git {
 
     pub fn new(cfg: &Config) -> Result<Self> {
         let path = cfg.sync_path();
-        let repo = Repository::init(&path)?;
+        let repo = Repository::clone(&cfg.sync.url, &path)?;
         fs::create_dir_all(Path::new(&path).join("hosts"))?;
         Ok(Self {
             path,
