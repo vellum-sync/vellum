@@ -5,7 +5,7 @@ use std::{
 
 use crate::error::Result;
 
-use super::{Data, Syncer, Update, Version};
+use super::{Data, Syncer, Version};
 
 #[derive(Debug, Clone)]
 pub struct Dummy {
@@ -34,21 +34,11 @@ impl Syncer for Dummy {
         Ok(vec![])
     }
 
-    fn start_update(&self, _host: &str) -> Result<Box<dyn Update>> {
-        Ok(Box::new(self.clone()))
-    }
-
     fn refresh(&self) -> Result<PathBuf> {
         Ok(self.path.clone())
     }
-}
 
-impl Update for Dummy {
-    fn path(&self) -> PathBuf {
-        self.path.clone()
-    }
-
-    fn finish(self: Box<Self>, _force: bool) -> Result<()> {
+    fn push_changes(&self, _host: &str, _force: bool) -> Result<()> {
         Ok(())
     }
 }

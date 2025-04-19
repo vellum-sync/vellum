@@ -30,9 +30,9 @@ pub trait Syncer: fmt::Debug + Send {
 
     fn get_external_hosts(&self, host: &str) -> Result<Vec<String>>;
 
-    fn start_update<'a>(&'a self, host: &str) -> Result<Box<dyn Update + 'a>>;
-
     fn refresh(&self) -> Result<PathBuf>;
+
+    fn push_changes(&self, host: &str, force: bool) -> Result<()>;
 }
 
 pub fn get_syncer(cfg: &Config) -> Result<Box<dyn Syncer>> {
@@ -51,10 +51,4 @@ pub fn get_syncer(cfg: &Config) -> Result<Box<dyn Syncer>> {
         debug!("Create new git repo at {path:?} from URL {url:?}");
         Ok(Box::new(git::Git::new(cfg)?))
     }
-}
-
-pub trait Update: fmt::Debug {
-    fn path(&self) -> PathBuf;
-
-    fn finish(self: Box<Self>, force: bool) -> Result<()>;
 }

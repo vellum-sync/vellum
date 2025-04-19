@@ -130,47 +130,48 @@ pub struct History {
     merged: Vec<Entry>,
     last_write: DateTime<Utc>,
     last_read: DateTime<Utc>,
+    syncer: Box<dyn Syncer>,
 }
 
 impl History {
-    fn new<S: Into<String>>(host: S) -> Self {
+    fn new<S: Into<String>>(host: S, syncer: Box<dyn Syncer>) -> Self {
         Self {
             host: host.into(),
             history: HashMap::new(),
             merged: Vec::new(),
             last_write: Utc::now(),
             last_read: DateTime::from_timestamp_nanos(0),
+            syncer,
         }
     }
 
-    pub fn load<S: Into<String>>(host: S, syncer: &dyn Syncer) -> Result<Self> {
-        let mut s = Self::new(host);
-        s.update(syncer)?;
+    pub fn load<S: Into<String>>(host: S, syncer: Box<dyn Syncer>) -> Result<Self> {
+        let mut s = Self::new(host, syncer);
+        s.update()?;
         Ok(s)
     }
 
-    pub fn save(&mut self, syncer: &dyn Syncer, force: bool) -> Result<()> {
-        let update = syncer.start_update(&self.host)?;
-        self.write(update.path())?;
+    pub fn save(&mut self, force: bool) -> Result<()> {
+        let path = self.syncer.refresh()?;
+        self.write(path)?;
         self.last_write = Utc::now();
-        update.finish(force)
+        self.syncer.push_changes(&self.host, force)
     }
 
-    pub fn update(&mut self, syncer: &dyn Syncer) -> Result<()> {
-        let path = syncer.refresh()?;
+    pub fn update(&mut self) -> Result<()> {
+        let path = self.syncer.refresh()?;
         self.read(path)?;
         self.last_read = Utc::now();
         Ok(())
     }
 
-    pub fn sync(&mut self, syncer: &dyn Syncer, force: bool) -> Result<()> {
-        let update = syncer.start_update(&self.host)?;
-        let path = update.path();
+    pub fn sync(&mut self, force: bool) -> Result<()> {
+        let path = self.syncer.refresh()?;
         self.write(&path)?;
         self.last_write = Utc::now();
         self.read(&path)?;
         self.last_read = Utc::now();
-        update.finish(force)
+        self.syncer.push_changes(&self.host, force)
     }
 
     pub fn history(&self) -> Vec<Entry> {

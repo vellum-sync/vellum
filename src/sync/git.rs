@@ -16,7 +16,7 @@ use crate::{
     error::{Error, Result},
 };
 
-use super::{Data, Syncer, Update, Version};
+use super::{Data, Syncer, Version};
 
 pub struct Git {
     path: PathBuf,
@@ -382,39 +382,13 @@ impl Syncer for Git {
         Ok(hosts)
     }
 
-    fn start_update<'a>(&'a self, host: &str) -> Result<Box<dyn Update + 'a>> {
-        self.pull()?;
-        Ok(Box::new(GitUpdate::new(self, host)))
-    }
-
     fn refresh(&self) -> Result<PathBuf> {
         self.pull()?;
         Ok(Path::new(&self.path).join("hosts"))
     }
-}
 
-#[derive(Debug)]
-struct GitUpdate<'a> {
-    host: String,
-    git: &'a Git,
-}
-
-impl<'a> GitUpdate<'a> {
-    fn new(git: &'a Git, host: &str) -> Self {
-        Self {
-            host: host.to_string(),
-            git,
-        }
-    }
-}
-
-impl<'a> Update for GitUpdate<'a> {
-    fn path(&self) -> PathBuf {
-        Path::new(&self.git.path).join("hosts")
-    }
-
-    fn finish(self: Box<Self>, force: bool) -> Result<()> {
-        let mut index = self.git.repo.index()?;
+    fn push_changes(&self, host: &str, force: bool) -> Result<()> {
+        let mut index = self.repo.index()?;
 
         // TODO(jp3): This should only be adding paths for the host being
         // updated, use a callback to do the filtering?
@@ -422,13 +396,13 @@ impl<'a> Update for GitUpdate<'a> {
         index.write()?;
 
         let message = if force {
-            format!("update {} (forced)", &self.host)
+            format!("update {host} (forced)")
         } else {
-            format!("update {}", &self.host)
+            format!("update {host}")
         };
 
-        if let Some(_) = self.git.commit(&message, force)? {
-            self.git.push()?;
+        if let Some(_) = self.commit(&message, force)? {
+            self.push()?;
         }
 
         Ok(())
