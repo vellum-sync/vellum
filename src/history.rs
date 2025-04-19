@@ -198,24 +198,34 @@ impl History {
     }
 
     fn read<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
+        let mut added = false;
+
+        // read any new data from disk
         for entry in fs::read_dir(&path)? {
             let entry = entry?;
             let file_name = entry.file_name();
             let host = file_name.to_string_lossy();
             if entry.path().is_dir() && host != self.host.as_str() {
-                self.read_host(entry.path(), host)?;
+                added |= self.read_host(entry.path(), host)?;
             }
         }
+
+        // if we added any new entries, then we need to rebuild merged
+        if added {
+            self.rebuild_merged()?;
+        }
+
         Ok(())
     }
 
-    fn read_host<P: AsRef<Path>, S: Into<String>>(&mut self, path: P, host: S) -> Result<()> {
+    fn read_host<P: AsRef<Path>, S: Into<String>>(&mut self, path: P, host: S) -> Result<bool> {
         let key = get_key()?;
 
         let last_read_day = format!("{}", self.last_read.format("%Y-%m-%d"));
 
         let chunks = self.history.entry(host.into()).or_default();
 
+        let mut added = false;
         for entry in fs::read_dir(&path)? {
             let entry = entry?;
             let day = entry.file_name();
@@ -238,13 +248,15 @@ impl History {
                 .collect::<Result<Vec<Chunk>>>()?;
 
             chunks.append(&mut new_chunks);
+
+            added = true;
         }
 
         // we might have read chunks out of order, but we want them in time
         // order, so sort them.
         chunks.sort_unstable_by_key(|chunk| chunk.start);
 
-        Ok(())
+        Ok(added)
     }
 
     fn write<P: AsRef<Path>>(&self, path: P) -> Result<()> {
@@ -278,6 +290,21 @@ impl History {
             }
             f.flush()?;
         }
+
+        Ok(())
+    }
+
+    fn rebuild_merged(&mut self) -> Result<()> {
+        let mut new_merged = Vec::new();
+
+        for (_, chunks) in self.history.iter() {
+            for chunk in chunks {
+                new_merged.extend(chunk.entries.iter().map(|entry| entry.clone()));
+            }
+        }
+
+        new_merged.sort();
+        self.merged = new_merged;
 
         Ok(())
     }
