@@ -4,7 +4,7 @@ use std::{
     os::unix::net::{self, UnixListener, UnixStream},
     path::Path,
     thread::sleep,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use log::debug;
@@ -175,7 +175,9 @@ pub enum Message {
 }
 
 pub fn ping(cfg: &Config, wait: bool) -> Result<()> {
-    loop {
+    let limit = Duration::from_secs(5);
+    let start = Instant::now();
+    while start.elapsed() < limit {
         match try_ping(cfg) {
             Ok(_) => return Ok(()),
             Err(e) => {
@@ -186,6 +188,9 @@ pub fn ping(cfg: &Config, wait: bool) -> Result<()> {
         }
         sleep(Duration::from_millis(100));
     }
+    Err(Error::Generic(format!(
+        "server didn't respond to ping within {limit:?}"
+    )))
 }
 
 fn try_ping(cfg: &Config) -> Result<()> {
