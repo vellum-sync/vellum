@@ -3,6 +3,8 @@ use std::{
     io::{Read, Write},
     os::unix::net::{self, UnixListener, UnixStream},
     path::Path,
+    thread::sleep,
+    time::Duration,
 };
 
 use log::debug;
@@ -170,4 +172,24 @@ pub enum Message {
     Exit(bool),
     Ping,
     Pong,
+}
+
+pub fn ping(cfg: &Config, wait: bool) -> Result<()> {
+    loop {
+        match try_ping(cfg) {
+            Ok(_) => return Ok(()),
+            Err(e) => {
+                if !wait {
+                    return Err(e);
+                }
+            }
+        }
+        sleep(Duration::from_millis(100));
+    }
+}
+
+fn try_ping(cfg: &Config) -> Result<()> {
+    let mut conn = Connection::new(cfg)?;
+    conn.ping()?;
+    Ok(())
 }

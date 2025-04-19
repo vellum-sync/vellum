@@ -16,7 +16,7 @@ use log::{debug, error, info};
 use ticker::Ticker;
 
 use crate::{
-    api::{Connection, Listener, Message},
+    api::{Connection, Listener, Message, ping},
     config::Config,
     error::Result,
     history::{self, Entry, History},
@@ -106,6 +106,31 @@ fn background(config: &Config, force: bool) {
         cmd.arg("--force");
     }
     let _ = cmd.env("VELLUM_LOG_FILE", log_file).exec();
+}
+
+fn ensure_running(cfg: &Config) -> Result<()> {
+    if server_is_running(cfg)? {
+        debug!("server is already running");
+        return Ok(());
+    };
+
+    debug!("start server in background");
+    let exe = current_exe()?;
+    let mut cmd = Command::new(exe);
+    if let Some(cfg_path) = cfg.path.as_ref() {
+        cmd.arg("--config").arg(cfg_path);
+    };
+    cmd.arg("server").spawn()?;
+
+    Ok(())
+}
+
+pub fn ensure_ready(cfg: &Config) -> Result<()> {
+    ensure_running(cfg)?;
+    debug!("wait for server to respond ...");
+    ping(cfg, true)?;
+    debug!("server is ready");
+    Ok(())
 }
 
 #[derive(Debug, Clone)]

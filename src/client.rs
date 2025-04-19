@@ -1,14 +1,15 @@
-use std::{collections::HashSet, env, thread::sleep, time::Duration};
+use std::{collections::HashSet, env};
 
 use log::{debug, info};
 use uuid::Uuid;
 
 use crate::{
-    api::Connection,
+    api::{self, Connection},
     config::Config,
     error::Result,
     history::Entry,
     process::{server_is_running, wait_for_server_exit},
+    server,
 };
 
 fn get_session() -> String {
@@ -19,6 +20,7 @@ fn get_session() -> String {
 }
 
 pub fn store(cfg: &Config, cmd: String) -> Result<()> {
+    server::ensure_ready(cfg)?;
     let mut conn = Connection::new(cfg)?;
     conn.store(cmd, get_session())
 }
@@ -47,6 +49,7 @@ pub struct HistoryArgs {
 }
 
 pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
+    server::ensure_ready(cfg)?;
     let current_session = get_session();
     let mut conn = Connection::new(cfg)?;
     let history: Vec<Entry> = conn
@@ -73,6 +76,7 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
 }
 
 pub fn sync(cfg: &Config, force: bool) -> Result<()> {
+    server::ensure_ready(cfg)?;
     let mut conn = Connection::new(cfg)?;
     conn.sync(force)
 }
@@ -97,6 +101,8 @@ pub struct MoveArgs {
 }
 
 pub fn do_move(cfg: &Config, args: MoveArgs) -> Result<()> {
+    server::ensure_ready(cfg)?;
+
     debug!("move: {args:?}");
 
     let mut conn = Connection::new(cfg)?;
@@ -142,23 +148,7 @@ pub fn do_move(cfg: &Config, args: MoveArgs) -> Result<()> {
 }
 
 pub fn ping(cfg: &Config, wait: bool) -> Result<()> {
-    debug!("ping: wait: {wait}");
-    loop {
-        match try_ping(cfg) {
-            Ok(_) => return Ok(()),
-            Err(e) => {
-                if !wait {
-                    return Err(e);
-                }
-            }
-        }
-        sleep(Duration::from_millis(100));
-    }
-}
-
-fn try_ping(cfg: &Config) -> Result<()> {
-    let mut conn = Connection::new(cfg)?;
-    conn.ping()?;
+    api::ping(cfg, wait)?;
     info!("got pong from server");
     Ok(())
 }
