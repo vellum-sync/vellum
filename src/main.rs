@@ -44,7 +44,11 @@ enum Commands {
     },
 
     /// List all the stored commands
-    History,
+    History {
+        /// Only show commands stored by the current session
+        #[arg(short, long)]
+        session: bool,
+    },
 
     /// Display the vellum configuration
     Config,
@@ -102,7 +106,7 @@ fn main() {
 
     if let Err(e) = match cli.command {
         Commands::Store { shell_command } => client::store(&config, shell_command),
-        Commands::History => client::history(&config),
+        Commands::History { session } => client::history(&config, session),
         Commands::Config => config.show(),
         Commands::Init(args) => init::init(args),
         Commands::Sync { force } => client::sync(&config, force),

@@ -19,10 +19,14 @@ pub fn stop_server(cfg: &Config, no_sync: bool) -> Result<()> {
     conn.exit(no_sync)
 }
 
-pub fn history(cfg: &Config) -> Result<()> {
+pub fn history(cfg: &Config, session: bool) -> Result<()> {
     let mut conn = Connection::new(cfg)?;
     let history = conn.history_request()?;
-    for entry in history {
+    let current_session = get_session();
+    for entry in history
+        .into_iter()
+        .filter(|entry| !session || entry.session == current_session)
+    {
         println!("{}", entry.cmd);
     }
     Ok(())
