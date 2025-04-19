@@ -5,7 +5,7 @@ use std::{
 
 use git2::{
     Commit, Cred, ErrorCode, FetchOptions, IndexAddOption, Oid, PushOptions, Rebase, RebaseOptions,
-    RemoteCallbacks, Repository,
+    RemoteCallbacks, Repository, build::RepoBuilder,
 };
 use log::{debug, error};
 
@@ -35,8 +35,43 @@ impl Git {
     }
 
     pub fn new(cfg: &Config) -> Result<Self> {
+        let git_config = git2::Config::open_default()?;
+
+        // TODO(jp3): refactor the credentials code, and stop copy/pasting it
+        // all over the place ...
+        let mut cbs = RemoteCallbacks::new();
+        cbs.credentials(|url, username, types| {
+            debug!(
+                "trying to find credentials for {url} (username: {username:?}, types: {types:?})"
+            );
+            if types.is_default() {
+                Cred::default()
+            } else if types.is_ssh_key() {
+                let username = username
+                    .ok_or_else(|| git2::Error::from_str("missing username for ssh auth"))?;
+                if !cfg.sync.ssh_key.is_empty() {
+                    let privatekey = Path::new(&cfg.sync.ssh_key);
+                    Cred::ssh_key(username, None, privatekey, None)
+                } else {
+                    Cred::ssh_key_from_agent(username)
+                }
+            } else if types.is_user_pass_plaintext() {
+                Cred::credential_helper(&git_config, url, username)
+            } else {
+                Err(git2::Error::from_str(&format!(
+                    "no supported auth methods available: {types:?}"
+                )))
+            }
+        });
+
+        let mut opts = FetchOptions::new();
+        opts.remote_callbacks(cbs);
+
+        let mut builder = RepoBuilder::new();
+        builder.fetch_options(opts);
+
         let path = cfg.sync_path();
-        let repo = Repository::clone(&cfg.sync.url, &path)?;
+        let repo = builder.clone(&cfg.sync.url, &path)?;
         fs::create_dir_all(Path::new(&path).join("hosts"))?;
         Ok(Self {
             path,
