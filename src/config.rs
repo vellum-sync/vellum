@@ -64,7 +64,10 @@ impl Config {
 
     fn open_default() -> Result {
         if let Ok(path) = env::var("VELLUM_CONFIG") {
-            return Self::open(path);
+            if fs::exists(&path)? {
+                return Self::open(path);
+            }
+            return Ok(Self::default());
         };
 
         let dirs = BaseDirectories::with_prefix("vellum")?;
