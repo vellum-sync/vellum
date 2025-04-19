@@ -13,8 +13,8 @@ pub fn stop_server(cfg: &Config, no_sync: bool) -> Result<()> {
 pub fn history(cfg: &Config) -> Result<()> {
     let mut conn = Connection::new(cfg)?;
     let history = conn.history_request()?;
-    for command in history {
-        println!("{command}")
+    for entry in history {
+        println!("{}", entry.cmd);
     }
     Ok(())
 }

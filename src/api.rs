@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     config::Config,
     error::{Error, Result},
+    history::Entry,
 };
 
 pub struct Connection {
@@ -59,7 +60,7 @@ impl Connection {
         }
     }
 
-    pub fn history_request(&mut self) -> Result<Vec<String>> {
+    pub fn history_request(&mut self) -> Result<Vec<Entry>> {
         let msg = Message::HistoryRequest;
         match self.request(&msg)? {
             Message::History(h) => Ok(h),
@@ -68,7 +69,7 @@ impl Connection {
         }
     }
 
-    pub fn send_history(&mut self, history: Vec<String>) -> Result<()> {
+    pub fn send_history(&mut self, history: Vec<Entry>) -> Result<()> {
         let msg = Message::History(history);
         self.send(&msg)
     }
@@ -150,7 +151,7 @@ pub enum Message {
     Store(String),
     Error(String),
     HistoryRequest,
-    History(Vec<String>),
+    History(Vec<Entry>),
     Sync(bool),
     Exit(bool),
 }

@@ -16,7 +16,7 @@ use crate::{
     api::{Connection, Listener, Message},
     config::Config,
     error::Result,
-    history::{self, History},
+    history::{self, Entry, History},
     sync::get_syncer,
 };
 
@@ -207,13 +207,9 @@ impl Server {
         history.add(cmd);
     }
 
-    fn history(&self) -> Vec<String> {
+    fn history(&self) -> Vec<Entry> {
         let history = self.history.lock().unwrap();
-        history
-            .history()
-            .into_iter()
-            .map(|entry| entry.cmd)
-            .collect()
+        history.history()
     }
 
     fn sync_local(&self, force: bool) -> Result<()> {
