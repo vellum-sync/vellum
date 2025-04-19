@@ -1,4 +1,4 @@
-use std::env;
+use std::{collections::HashSet, env};
 
 use log::debug;
 use uuid::Uuid;
@@ -22,15 +22,39 @@ pub fn stop_server(cfg: &Config, no_sync: bool) -> Result<()> {
     conn.exit(no_sync)
 }
 
-pub fn history(cfg: &Config, session: bool) -> Result<()> {
-    let mut conn = Connection::new(cfg)?;
-    let history = conn.history_request()?;
+#[derive(clap::Args, Debug)]
+pub struct HistoryArgs {
+    /// Only show commands stored by the current session
+    #[arg(short, long)]
+    session: bool,
+
+    /// Format the output in the way expected by fzf
+    #[arg(long)]
+    fzf: bool,
+}
+
+pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
     let current_session = get_session();
-    for entry in history
+    let mut conn = Connection::new(cfg)?;
+    let history: Vec<Entry> = conn
+        .history_request()?
         .into_iter()
-        .filter(|entry| !session || entry.session == current_session)
-    {
-        println!("{}", entry.cmd);
+        .filter(|entry| !args.session || entry.session == current_session)
+        .collect();
+    let mut seen = HashSet::new();
+    if args.fzf {
+        for (index, entry) in history
+            .iter()
+            .enumerate()
+            .rev()
+            .filter(|(_, entry)| seen.insert(&entry.cmd))
+        {
+            print!("{}\t{}\x00", index + 1, entry.cmd);
+        }
+    } else {
+        for entry in history {
+            println!("{}", entry.cmd);
+        }
     }
     Ok(())
 }
