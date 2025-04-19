@@ -124,6 +124,7 @@ pub fn get_key() -> Result<Vec<u8>> {
     Ok(key)
 }
 
+#[derive(Debug)]
 pub struct History {
     host: String,
     history: HashMap<String, Vec<Chunk>>,

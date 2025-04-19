@@ -19,7 +19,7 @@ use crate::{
     api::{Connection, Listener, Message},
     config::Config,
     error::Result,
-    history,
+    history::{self, History},
     sync::{Syncer, Version, get_syncer},
 };
 
@@ -205,7 +205,7 @@ impl State {
 #[derive(Debug, Clone)]
 struct Server {
     cfg: Config,
-    state: Arc<Mutex<State>>,
+    history: Arc<Mutex<History>>,
 }
 
 impl Server {
@@ -218,7 +218,7 @@ impl Server {
 
         Ok(Self {
             cfg: cfg.clone(),
-            state: Arc::new(Mutex::new(State::new(host, syncer)?)),
+            history: Arc::new(Mutex::new(History::load(host, syncer)?)),
         })
     }
 
@@ -309,22 +309,26 @@ impl Server {
     }
 
     fn store(&self, cmd: String) {
-        let mut state = self.state.lock().unwrap();
-        state.store(self.cfg.hostname.to_string_lossy().to_string(), cmd);
+        let mut history = self.history.lock().unwrap();
+        history.add(cmd);
     }
 
     fn history(&self) -> Vec<String> {
-        let state = self.state.lock().unwrap();
-        state.history.clone()
+        let history = self.history.lock().unwrap();
+        history
+            .history()
+            .into_iter()
+            .map(|entry| entry.cmd)
+            .collect()
     }
 
     fn sync_local(&self, force: bool) -> Result<()> {
-        let mut state = self.state.lock().unwrap();
-        state.sync_local(force)
+        let mut history = self.history.lock().unwrap();
+        history.save(force)
     }
 
     fn sync(&self, force: bool) -> Result<()> {
-        let mut state = self.state.lock().unwrap();
-        state.sync(force)
+        let mut history = self.history.lock().unwrap();
+        history.sync(force)
     }
 }
