@@ -2,6 +2,7 @@ use std::io::{Write, stdout};
 
 use clap;
 use log::debug;
+use uuid::Uuid;
 
 use crate::{
     assets,
@@ -22,12 +23,16 @@ enum Commands {
 
     /// Output an encryption key, suitable for use as $VELLUM_KEY
     Key,
+
+    /// Output a session id, suitable for use as $VELLUM_SESSION
+    Session,
 }
 
 pub fn init(args: Args) -> Result<()> {
     match args.command {
         Commands::ZSH => show_zsh(),
         Commands::Key => show_key(),
+        Commands::Session => show_session(),
     }
 }
 
@@ -42,5 +47,11 @@ fn show_zsh() -> Result<()> {
 fn show_key() -> Result<()> {
     debug!("show key ...");
     print!("{}", generate_key()?);
+    Ok(())
+}
+
+fn show_session() -> Result<()> {
+    debug!("show session ...");
+    print!("{}", Uuid::now_v7());
     Ok(())
 }

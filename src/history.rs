@@ -30,15 +30,17 @@ pub struct Entry {
     pub ts: DateTime<Utc>,
     pub host: String,
     pub cmd: String,
+    pub session: String,
 }
 
 impl Entry {
-    fn new<H: Into<String>, C: Into<String>>(host: H, cmd: C) -> Self {
+    fn new<H: Into<String>, C: Into<String>, S: Into<String>>(host: H, cmd: C, session: S) -> Self {
         Self {
             id: Uuid::now_v7(),
             ts: Utc::now(),
             host: host.into(),
             cmd: cmd.into(),
+            session: session.into(),
         }
     }
 }
@@ -189,8 +191,8 @@ impl History {
         chunks.last_mut().unwrap()
     }
 
-    pub fn add<S: Into<String>>(&mut self, cmd: S) {
-        let entry = Entry::new(&self.host, cmd);
+    pub fn add<C: Into<String>, S: Into<String>>(&mut self, cmd: C, session: S) {
+        let entry = Entry::new(&self.host, cmd, session);
         self.get_active_chunk().push(entry.clone());
         self.merged.push(entry);
     }

@@ -51,8 +51,8 @@ impl Connection {
         self.receive()
     }
 
-    pub fn store(&mut self, cmd: String) -> Result<()> {
-        let msg = Message::Store(cmd);
+    pub fn store(&mut self, cmd: String, session: String) -> Result<()> {
+        let msg = Message::Store { cmd, session };
         match self.request(&msg)? {
             Message::Ack => Ok(()),
             Message::Error(e) => Err(Error::Generic(e)),
@@ -148,7 +148,7 @@ impl<'a> Iterator for Incoming<'a> {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Message {
     Ack,
-    Store(String),
+    Store { cmd: String, session: String },
     Error(String),
     HistoryRequest,
     History(Vec<Entry>),

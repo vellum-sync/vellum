@@ -1,8 +1,17 @@
+use std::env;
+
 use crate::{api::Connection, config::Config, error::Result};
+
+fn get_session() -> String {
+    match env::var("VELLUM_SESSION") {
+        Ok(s) => s,
+        Err(_) => "NO-SESSION".to_string(),
+    }
+}
 
 pub fn store(cfg: &Config, cmd: String) -> Result<()> {
     let mut conn = Connection::new(cfg)?;
-    conn.store(cmd)
+    conn.store(cmd, get_session())
 }
 
 pub fn stop_server(cfg: &Config, no_sync: bool) -> Result<()> {
