@@ -131,7 +131,6 @@ pub struct History {
     history: HashMap<String, Vec<Chunk>>,
     merged: Vec<Entry>,
     last_write: DateTime<Utc>,
-    last_read: DateTime<Utc>,
     syncer: Box<dyn Syncer>,
 }
 
@@ -142,7 +141,6 @@ impl History {
             history: HashMap::new(),
             merged: Vec::new(),
             last_write: Utc::now(),
-            last_read: DateTime::from_timestamp_nanos(0),
             syncer,
         }
     }
@@ -163,7 +161,6 @@ impl History {
     pub fn update(&mut self) -> Result<()> {
         let path = self.syncer.refresh()?;
         self.read(path)?;
-        self.last_read = Utc::now();
         Ok(())
     }
 
@@ -172,7 +169,6 @@ impl History {
         self.write(&path)?;
         self.last_write = Utc::now();
         self.read(&path)?;
-        self.last_read = Utc::now();
         self.syncer.push_changes(&self.host, force)
     }
 
@@ -224,13 +220,26 @@ impl History {
         Ok(())
     }
 
+    fn last_read(&self, host: &str) -> DateTime<Utc> {
+        let epoch = DateTime::from_timestamp_nanos(0);
+        let chunks = match self.history.get(host) {
+            Some(c) => c,
+            None => return epoch,
+        };
+        match chunks.iter().last() {
+            Some(c) => c.start,
+            None => return epoch,
+        }
+    }
+
     fn read_host<P: AsRef<Path>, S: Into<String>>(&mut self, path: P, host: S) -> Result<bool> {
         let host = host.into();
         debug!("read chunks for {host}");
 
         let key = get_key()?;
 
-        let last_read_day = format!("{}", self.last_read.format("%Y-%m-%d"));
+        let last_read = self.last_read(&host);
+        let last_read_day = format!("{}", last_read.format("%Y-%m-%d"));
 
         let chunks = self.history.entry(host).or_default();
 
@@ -247,7 +256,7 @@ impl History {
             // read.
             let mut new_chunks = HistoryFile::open(entry.path())?
                 .filter(|chunk| match chunk {
-                    Ok(c) => c.start >= self.last_read,
+                    Ok(c) => c.start > last_read,
                     Err(_) => true,
                 })
                 .map(|chunk| match chunk {
