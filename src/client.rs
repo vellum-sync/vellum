@@ -120,9 +120,10 @@ pub struct MoveArgs {
     /// How far to move through the history relative to the start
     distance: isize,
 
-    /// Where to start the movement in the history. By default movement will
-    /// start from after the most recent command (i.e. by default a distance of
-    /// -1 will move back to the most recent command).
+    /// An ID of a historical command from which to start the movement in the
+    /// history. By default movement will start from after the most recent
+    /// command (i.e. by default a distance of -1 will move back to the most
+    /// recent command).
     start: Option<String>,
 }
 
