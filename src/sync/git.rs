@@ -1,11 +1,12 @@
 use std::{
     fmt, fs,
     path::{Path, PathBuf},
+    result,
 };
 
 use git2::{
-    Commit, Cred, ErrorCode, FetchOptions, IndexAddOption, Oid, PushOptions, Rebase, RebaseOptions,
-    RemoteCallbacks, Repository, build::RepoBuilder,
+    Commit, Cred, CredentialType, ErrorCode, FetchOptions, IndexAddOption, Oid, PushOptions,
+    Rebase, RebaseOptions, RemoteCallbacks, Repository, build::RepoBuilder,
 };
 use log::{debug, error};
 
@@ -35,34 +36,10 @@ impl Git {
     }
 
     pub fn new(cfg: &Config) -> Result<Self> {
-        let git_config = git2::Config::open_default()?;
+        let cm = CredsManager::new(cfg)?;
 
-        // TODO(jp3): refactor the credentials code, and stop copy/pasting it
-        // all over the place ...
         let mut cbs = RemoteCallbacks::new();
-        cbs.credentials(|url, username, types| {
-            debug!(
-                "trying to find credentials for {url} (username: {username:?}, types: {types:?})"
-            );
-            if types.is_default() {
-                Cred::default()
-            } else if types.is_ssh_key() {
-                let username = username
-                    .ok_or_else(|| git2::Error::from_str("missing username for ssh auth"))?;
-                if !cfg.sync.ssh_key.is_empty() {
-                    let privatekey = Path::new(&cfg.sync.ssh_key);
-                    Cred::ssh_key(username, None, privatekey, None)
-                } else {
-                    Cred::ssh_key_from_agent(username)
-                }
-            } else if types.is_user_pass_plaintext() {
-                Cred::credential_helper(&git_config, url, username)
-            } else {
-                Err(git2::Error::from_str(&format!(
-                    "no supported auth methods available: {types:?}"
-                )))
-            }
-        });
+        cbs.credentials(|url, username, types| cm.lookup(url, username, types));
 
         let mut opts = FetchOptions::new();
         opts.remote_callbacks(cbs);
@@ -95,40 +72,20 @@ impl Git {
             .as_str()
             .ok_or_else(|| Error::Generic(format!("unable to get upstream_ref_name")))?;
 
-        let git_config = git2::Config::open_default()?;
+        let cm = CredsManager::new(&self.cfg)?;
 
         let mut cbs = RemoteCallbacks::new();
-        cbs.credentials(|url, username, types| {
-            debug!(
-                "trying to find credentials for {url} (username: {username:?}, types: {types:?})"
-            );
-            if types.is_default() {
-                Cred::default()
-            } else if types.is_ssh_key() {
-                let username = username
-                    .ok_or_else(|| git2::Error::from_str("missing username for ssh auth"))?;
-                if !self.cfg.sync.ssh_key.is_empty() {
-                    let privatekey = Path::new(&self.cfg.sync.ssh_key);
-                    Cred::ssh_key(username, None, privatekey, None)
-                } else {
-                    Cred::ssh_key_from_agent(username)
+        cbs.credentials(|url, username, types| cm.lookup(url, username, types))
+            .update_tips(|name, old, new| {
+                debug!("update tip: name: {name} old: {old:?} new: {new:?}");
+                debug!(
+                    "name: {name}, ref_name: {ref_name}, upstream_ref_name: {upstream_ref_name}"
+                );
+                if name == upstream_ref_name {
+                    changes = true;
                 }
-            } else if types.is_user_pass_plaintext() {
-                Cred::credential_helper(&git_config, url, username)
-            } else {
-                Err(git2::Error::from_str(&format!(
-                    "no supported auth methods available: {types:?}"
-                )))
-            }
-        })
-        .update_tips(|name, old, new| {
-            debug!("update tip: name: {name} old: {old:?} new: {new:?}");
-            debug!("name: {name}, ref_name: {ref_name}, upstream_ref_name: {upstream_ref_name}");
-            if name == upstream_ref_name {
-                changes = true;
-            }
-            true
-        });
+                true
+            });
 
         let mut opts = FetchOptions::new();
         opts.remote_callbacks(cbs);
@@ -206,17 +163,6 @@ impl Git {
                 None => return Ok(()),
             };
             debug!("rebase op {:?}: {}", operation.kind(), operation.id());
-            // let index = self.repo.index()?;
-            // debug!(
-            //     "INDEX: len: {}, is_empty: {}, has conflicts: {}",
-            //     index.len(),
-            //     index.is_empty(),
-            //     index.has_conflicts()
-            // );
-            // debug!("look at all files ...");
-            // for entry in index.iter() {
-            //     debug!("{entry:?}");
-            // }
             match rebase.commit(None, &committer, None) {
                 Ok(oid) => debug!("updated {} -> {}", operation.id(), oid),
                 Err(e) => {
@@ -228,8 +174,6 @@ impl Git {
                     }
                 }
             };
-            // let oid = rebase.commit(None, &committer, None)?;
-            // debug!("updated {} -> {}", operation.id(), oid);
         }
     }
 
@@ -258,44 +202,22 @@ impl Git {
     fn try_push(&self) -> Result<()> {
         debug!("start push ...");
 
-        let git_config = git2::Config::open_default()?;
+        let cm = CredsManager::new(&self.cfg)?;
 
         let mut cbs = RemoteCallbacks::new();
-        cbs.credentials(|url, username, types| {
-            debug!(
-                "trying to find credentials for {url} (username: {username:?}, types: {types:?})"
-            );
-            if types.is_default() {
-                Cred::default()
-            } else if types.is_ssh_key() {
-                let username = username
-                    .ok_or_else(|| git2::Error::from_str("missing username for ssh auth"))?;
-                if !self.cfg.sync.ssh_key.is_empty() {
-                    let privatekey = Path::new(&self.cfg.sync.ssh_key);
-                    Cred::ssh_key(username, None, privatekey, None)
+        cbs.credentials(|url, username, types| cm.lookup(url, username, types))
+            .push_update_reference(|name, status| {
+                debug!("update reference: name: {name} status: {status:?}");
+                if let Some(msg) = status {
+                    Err(git2::Error::from_str(msg))
                 } else {
-                    Cred::ssh_key_from_agent(username)
+                    Ok(())
                 }
-            } else if types.is_user_pass_plaintext() {
-                Cred::credential_helper(&git_config, url, username)
-            } else {
-                Err(git2::Error::from_str(&format!(
-                    "no supported auth methods available: {types:?}"
-                )))
-            }
-        })
-        .push_update_reference(|name, status| {
-            debug!("update reference: name: {name} status: {status:?}");
-            if let Some(msg) = status {
-                Err(git2::Error::from_str(msg))
-            } else {
-                Ok(())
-            }
-        })
-        .update_tips(|name, old, new| {
-            debug!("update tip: name: {name} old: {old:?} new: {new:?}");
-            true
-        });
+            })
+            .update_tips(|name, old, new| {
+                debug!("update tip: name: {name} old: {old:?} new: {new:?}");
+                true
+            });
 
         let mut opts = PushOptions::new();
         opts.remote_callbacks(cbs);
@@ -380,5 +302,47 @@ impl Syncer for Git {
         }
 
         Ok(())
+    }
+}
+
+struct CredsManager {
+    cfg: Config,
+    git_config: git2::Config,
+}
+
+impl CredsManager {
+    fn new(cfg: &Config) -> Result<Self> {
+        let git_config = git2::Config::open_default()?;
+        Ok(Self {
+            cfg: cfg.clone(),
+            git_config,
+        })
+    }
+
+    fn lookup(
+        &self,
+        url: &str,
+        username: Option<&str>,
+        types: CredentialType,
+    ) -> result::Result<git2::Cred, git2::Error> {
+        debug!("trying to find credentials for {url} (username: {username:?}, types: {types:?})");
+        if types.is_default() {
+            Cred::default()
+        } else if types.is_ssh_key() {
+            let username =
+                username.ok_or_else(|| git2::Error::from_str("missing username for ssh auth"))?;
+            if !self.cfg.sync.ssh_key.is_empty() {
+                let privatekey = Path::new(&self.cfg.sync.ssh_key);
+                Cred::ssh_key(username, None, privatekey, None)
+            } else {
+                Cred::ssh_key_from_agent(username)
+            }
+        } else if types.is_user_pass_plaintext() {
+            Cred::credential_helper(&self.git_config, url, username)
+        } else {
+            Err(git2::Error::from_str(&format!(
+                "no supported auth methods available: {types:?}"
+            )))
+        }
     }
 }
