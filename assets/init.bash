@@ -10,7 +10,8 @@ else
     readonly __VELLUM_SETUP=1
 
     VELLUM_SESSION="$(vellum init session)"
-    export VELLUM_SESSION
+    VELLUM_SESSION_START="$(vellum init timestamp)"
+    export VELLUM_SESSION VELLUM_SESSION_START
 
     __vellum_preexec() {
         vellum store -- "$1"

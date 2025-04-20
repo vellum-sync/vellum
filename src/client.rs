@@ -1,5 +1,6 @@
 use std::{collections::HashSet, env};
 
+use chrono::{DateTime, Utc};
 use log::{debug, info};
 use uuid::Uuid;
 
@@ -12,17 +13,38 @@ use crate::{
     server,
 };
 
-fn get_session() -> String {
-    match env::var("VELLUM_SESSION") {
-        Ok(s) => s,
-        Err(_) => "NO-SESSION".to_string(),
+struct Session {
+    id: String,
+    start: Option<DateTime<Utc>>,
+}
+
+impl Session {
+    fn get() -> Result<Self> {
+        let id = match env::var("VELLUM_SESSION") {
+            Ok(s) => s,
+            Err(_) => "NO-SESSION".to_string(),
+        };
+        let start = match env::var("VELLUM_SESSION_START") {
+            Ok(s) => Some(DateTime::parse_from_rfc3339(&s)?.to_utc()),
+            Err(_) => None,
+        };
+        Ok(Self { id, start })
+    }
+
+    fn includes_entry(&self, entry: &Entry) -> bool {
+        if let Some(start) = self.start {
+            if entry.ts < start {
+                return true;
+            }
+        };
+        entry.session == self.id
     }
 }
 
 pub fn store(cfg: &Config, cmd: String) -> Result<()> {
     server::ensure_ready(cfg)?;
     let mut conn = Connection::new(cfg)?;
-    conn.store(cmd, get_session())
+    conn.store(cmd, Session::get()?.id)
 }
 
 pub fn stop_server(cfg: &Config, no_sync: bool) -> Result<()> {
@@ -50,12 +72,12 @@ pub struct HistoryArgs {
 
 pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
     server::ensure_ready(cfg)?;
-    let current_session = get_session();
+    let current_session = Session::get()?;
     let mut conn = Connection::new(cfg)?;
     let history: Vec<Entry> = conn
         .history_request()?
         .into_iter()
-        .filter(|entry| !args.session || entry.session == current_session)
+        .filter(|entry| !args.session || current_session.includes_entry(entry))
         .collect();
     let mut seen = HashSet::new();
     if args.fzf {
@@ -106,11 +128,11 @@ pub fn do_move(cfg: &Config, args: MoveArgs) -> Result<()> {
     debug!("move: {args:?}");
 
     let mut conn = Connection::new(cfg)?;
-    let current_session = get_session();
+    let current_session = Session::get()?;
     let history: Vec<Entry> = conn
         .history_request()?
         .into_iter()
-        .filter(|entry| !args.session || entry.session == current_session)
+        .filter(|entry| !args.session || current_session.includes_entry(entry))
         .collect();
 
     let start = match args.start {

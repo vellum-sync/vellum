@@ -22,6 +22,7 @@ pub enum Error {
     EnvVar(VarError),
     UUID(uuid::Error),
     ParseInt(ParseIntError),
+    ParseTime(chrono::ParseError),
 }
 
 impl Display for Error {
@@ -43,6 +44,7 @@ impl Display for Error {
             Self::EnvVar(e) => write!(f, "ENVIRONMENT VARIABLE ERROR: {e}"),
             Self::UUID(e) => write!(f, "UUID ERROR: {e}"),
             Self::ParseInt(e) => write!(f, "PARSE INT ERROR: {e}"),
+            Self::ParseTime(e) => write!(f, "PARSE TIME ERROR: {e}"),
         }
     }
 }
@@ -66,6 +68,7 @@ impl error::Error for Error {
             Self::EnvVar(e) => Some(e),
             Self::UUID(e) => Some(e),
             Self::ParseInt(e) => Some(e),
+            Self::ParseTime(e) => Some(e),
         }
     }
 }
@@ -157,6 +160,12 @@ impl From<uuid::Error> for Error {
 impl From<ParseIntError> for Error {
     fn from(value: ParseIntError) -> Self {
         Self::ParseInt(value)
+    }
+}
+
+impl From<chrono::ParseError> for Error {
+    fn from(value: chrono::ParseError) -> Self {
+        Self::ParseTime(value)
     }
 }
 

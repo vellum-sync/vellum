@@ -1,5 +1,6 @@
 use std::io::{Write, stdout};
 
+use chrono::Utc;
 use clap;
 use log::debug;
 use uuid::Uuid;
@@ -29,6 +30,9 @@ enum Commands {
 
     /// Output a session id, suitable for use as $VELLUM_SESSION
     Session,
+
+    /// Output a timestamp, suitable for use as $VELLUM_SESSION_START
+    Timestamp,
 }
 
 pub fn init(args: Args) -> Result<()> {
@@ -37,6 +41,7 @@ pub fn init(args: Args) -> Result<()> {
         Commands::ZSH => show_zsh(),
         Commands::Key => show_key(),
         Commands::Session => show_session(),
+        Commands::Timestamp => show_timestamp(),
     }
 }
 
@@ -65,5 +70,11 @@ fn show_key() -> Result<()> {
 fn show_session() -> Result<()> {
     debug!("show session ...");
     print!("{}", Uuid::now_v7());
+    Ok(())
+}
+
+fn show_timestamp() -> Result<()> {
+    debug!("show timestamp ...");
+    print!("{}", Utc::now().format("%+"));
     Ok(())
 }
