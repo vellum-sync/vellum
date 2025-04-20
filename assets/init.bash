@@ -36,7 +36,11 @@ else
 
     __vellum_previous() {
         local vellum_output
-        vellum_output="$(vellum move --with-id --session -- -1 "${__VELLUM_LINE}")"
+        local -a vellum_search
+        if [[ -z "${__VELLUM_LINE}" ]]; then
+            vellum_search+=("--prefix=${READLINE_LINE}")
+        fi
+        vellum_output="$(vellum move --with-id --session "${vellum_search[@]}" -- -1 "${__VELLUM_LINE}")"
         __VELLUM_LINE="${vellum_output%%|*}"
         READLINE_LINE="${vellum_output#*|}"
         READLINE_POINT="${#READLINE_LINE}"
@@ -44,7 +48,11 @@ else
 
     __vellum_next() {
         local vellum_output
-        vellum_output="$(vellum move --with-id --session -- 1 "${__VELLUM_LINE}")"
+        local -a vellum_search
+        if [[ -z "${__VELLUM_LINE}" ]]; then
+            vellum_search+=("--prefix=${READLINE_LINE}")
+        fi
+        vellum_output="$(vellum move --with-id --session "${vellum_search[@]}" -- 1 "${__VELLUM_LINE}")"
         __VELLUM_LINE="${vellum_output%%|*}"
         READLINE_LINE="${vellum_output#*|}"
         READLINE_POINT="${#READLINE_LINE}"

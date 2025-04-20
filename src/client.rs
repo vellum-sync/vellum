@@ -113,6 +113,10 @@ pub struct MoveArgs {
     #[arg(short, long)]
     session: bool,
 
+    /// Look for commands that match a given prefix
+    #[arg(short, long)]
+    prefix: Option<String>,
+
     /// How far to move through the history relative to the start
     distance: isize,
 
@@ -133,6 +137,9 @@ pub fn do_move(cfg: &Config, args: MoveArgs) -> Result<()> {
         .history_request()?
         .into_iter()
         .filter(|entry| !args.session || current_session.includes_entry(entry))
+        .filter(|entry| {
+            args.prefix.is_none() || entry.cmd.starts_with(args.prefix.as_ref().unwrap())
+        })
         .collect();
 
     let start = match args.start {
