@@ -30,6 +30,10 @@ pub struct Args {
     #[arg(short, long)]
     foreground: bool,
 
+    /// Wait for the server to start
+    #[arg(short, long)]
+    wait: bool,
+
     /// Try to start the server, even if one appears to be running
     #[arg(long)]
     force: bool,
@@ -51,6 +55,12 @@ pub fn run(config: &Config, args: Args) -> Result<()> {
 
     if args.foreground {
         start(config)
+    } else if args.wait {
+        debug!("start the server");
+        ensure_running(config, true)?;
+        debug!("wait for server to respond ...");
+        ping(config, true)?;
+        return Ok(());
     } else if let Fork::Child = daemon(false, false)? {
         background(config, args.force);
         exit(0);
@@ -108,8 +118,8 @@ fn background(config: &Config, force: bool) {
     let _ = cmd.env("VELLUM_LOG_FILE", log_file).exec();
 }
 
-fn ensure_running(cfg: &Config) -> Result<()> {
-    if server_is_running(cfg)? {
+fn ensure_running(cfg: &Config, force: bool) -> Result<()> {
+    if !force && server_is_running(cfg)? {
         debug!("server is already running");
         return Ok(());
     };
@@ -120,13 +130,17 @@ fn ensure_running(cfg: &Config) -> Result<()> {
     if let Some(cfg_path) = cfg.path.as_ref() {
         cmd.arg("--config").arg(cfg_path);
     };
-    cmd.arg("server").spawn()?;
+    cmd.arg("server");
+    if force {
+        cmd.arg("--force");
+    }
+    cmd.spawn()?;
 
     Ok(())
 }
 
 pub fn ensure_ready(cfg: &Config) -> Result<()> {
-    ensure_running(cfg)?;
+    ensure_running(cfg, false)?;
     debug!("wait for server to respond ...");
     ping(cfg, true)?;
     debug!("server is ready");
