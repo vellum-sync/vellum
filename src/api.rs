@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use log::debug;
+use log::{debug, info};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -128,7 +128,8 @@ impl Listener {
     pub fn new(cfg: &Config) -> Result<Self> {
         let path = Path::new(&cfg.state_dir).join("server.sock");
         debug!("Start listening: {path:#?}");
-        let listener = UnixListener::bind(path)?;
+        let listener = UnixListener::bind(&path)?;
+        info!("Started listening at {path:?}");
         Ok(Listener { l: listener })
     }
 

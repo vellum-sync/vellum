@@ -213,7 +213,7 @@ impl Server {
         loop {
             match conn.receive() {
                 Ok(req) => {
-                    info!("got request: {req:?}");
+                    debug!("got request: {req:?}");
                     self.handle_request(req, &mut conn);
                 }
                 Err(e) => {
@@ -227,14 +227,14 @@ impl Server {
     fn handle_request(&self, req: Message, conn: &mut Connection) {
         match req {
             Message::Store { cmd, session } => {
-                info!("Received request from session {session} to store command: {cmd}");
+                debug!("Received request from session {session} to store command: {cmd}");
                 self.store(cmd, session);
                 if let Err(e) = conn.ack() {
                     error!("Failed to send ack: {e}");
                 };
             }
             Message::HistoryRequest => {
-                info!("Received history request");
+                debug!("Received history request");
                 let history = self.history();
                 if let Err(e) = conn.send_history(history) {
                     error!("Failed to send history: {e}");
@@ -255,7 +255,7 @@ impl Server {
                         error!("Failed to sync: {e}");
                     }
                 }
-                debug!("Exiting ...");
+                info!("Exiting ...");
                 exit(0);
             }
             Message::Sync(force) => {
@@ -270,7 +270,7 @@ impl Server {
                 };
             }
             Message::Ping => {
-                info!("Received ping request");
+                debug!("Received ping request");
                 if let Err(e) = conn.pong() {
                     error!("Failed to send pong: {e}");
                 }
