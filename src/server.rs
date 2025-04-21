@@ -5,7 +5,7 @@ use std::{
     os::unix::process::CommandExt,
     path::Path,
     process::{self, Command, exit},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, atomic::AtomicBool},
     thread,
 };
 
@@ -13,6 +13,7 @@ use clap;
 use fd_lock::RwLock;
 use fork::{Fork, daemon};
 use log::{debug, error, info};
+use signal_hook::{consts::TERM_SIGNALS, flag, iterator::Signals};
 use ticker::Ticker;
 
 use crate::{
@@ -193,6 +194,8 @@ impl Server {
     }
 
     fn serve(&self) -> Result<()> {
+        self.setup_signals()?;
+
         let listener = Listener::new(&self.cfg)?;
         for conn in listener.incoming() {
             match conn {
@@ -206,6 +209,29 @@ impl Server {
             }
         }
 
+        Ok(())
+    }
+
+    fn setup_signals(&self) -> Result<()> {
+        let term_now = Arc::new(AtomicBool::new(false));
+        // Getting two term signals in a row will trigger immediate exit
+        for sig in TERM_SIGNALS {
+            flag::register_conditional_shutdown(*sig, 1, term_now.clone())?;
+            flag::register(*sig, term_now.clone())?;
+        }
+        let mut signals = Signals::new(TERM_SIGNALS)?;
+        let server = self.clone();
+        thread::spawn(move || {
+            for signal in signals.forever() {
+                info!("Received signal: {signal}");
+                // run a sync before exiting, so that we don't loose any state.
+                if let Err(e) = server.sync_local(false) {
+                    error!("Failed to sync: {e}");
+                }
+                info!("Exiting ...");
+                exit(0);
+            }
+        });
         Ok(())
     }
 
