@@ -1,7 +1,7 @@
 use std::{env, fs, io, path::Path, process::exit};
 
 use clap::{Parser, Subcommand};
-use env_logger::Target;
+use env_logger::{Env, Target};
 use log::error;
 
 mod api;
@@ -97,9 +97,13 @@ fn log_target() -> Target {
 }
 
 fn main() {
-    env_logger::Builder::from_env("VELLUM_LOG")
-        .target(log_target())
-        .init();
+    env_logger::Builder::from_env(
+        Env::new()
+            .filter_or("VELLUM_LOG", "info")
+            .write_style("VELLUM_LOG_STYLE"),
+    )
+    .target(log_target())
+    .init();
 
     let cli = Cli::parse();
 
