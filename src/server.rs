@@ -212,9 +212,13 @@ impl Server {
     fn handle_client(&self, mut conn: Connection) {
         loop {
             match conn.receive() {
-                Ok(req) => {
+                Ok(Some(req)) => {
                     debug!("got request: {req:?}");
                     self.handle_request(req, &mut conn);
+                }
+                Ok(None) => {
+                    debug!("client disconnected");
+                    return;
                 }
                 Err(e) => {
                     error!("error getting next request: {e}");

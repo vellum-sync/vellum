@@ -1,8 +1,9 @@
 use std::{
     fs::remove_file,
-    io::{Read, Write},
+    io::{self, ErrorKind, Read, Write},
     os::unix::net::{self, UnixListener, UnixStream},
     path::Path,
+    result,
     thread::sleep,
     time::{Duration, Instant},
 };
@@ -35,7 +36,7 @@ impl Connection {
         Ok(self.s.write_all(&data)?)
     }
 
-    pub fn receive(&mut self) -> Result<Message> {
+    fn read_message(&mut self) -> result::Result<Vec<u8>, io::Error> {
         let mut buf = [0 as u8; 8];
         self.s.read_exact(&mut buf)?;
         let len = u64::from_le_bytes(buf);
@@ -43,14 +44,25 @@ impl Connection {
         let mut data = vec![0u8; len as usize];
         self.s.read_exact(&mut data)?;
 
-        Ok(rmp_serde::from_slice(&data)?)
+        Ok(data)
+    }
+
+    pub fn receive(&mut self) -> Result<Option<Message>> {
+        let data = match self.read_message() {
+            Ok(d) => d,
+            Err(e) if e.kind() == ErrorKind::UnexpectedEof => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
+
+        Ok(Some(rmp_serde::from_slice(&data)?))
     }
 
     pub fn request(&mut self, msg: &Message) -> Result<Message> {
         debug!("send message: {msg:?}");
         self.send(msg)?;
         debug!("receive response");
-        self.receive()
+        let data = self.read_message()?;
+        Ok(rmp_serde::from_slice(&data)?)
     }
 
     pub fn store(&mut self, cmd: String, session: String) -> Result<()> {
