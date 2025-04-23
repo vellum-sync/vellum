@@ -75,10 +75,15 @@ fn start(config: &Config) -> Result<()> {
     debug!("server: config={config:?} pid={pid}");
 
     // try and lock the pid file, this will fail if a server is already running.
+    // We can't truncate as part of opening the file as this will bypass the
+    // lock and remove the pid of another server - so we have to manually
+    // truncate after opening to ensure that writing a smaller value than was
+    // previously written works correctly.
     debug!("create pid file");
     let pid_file = Path::new(&config.state_dir).join("server.pid");
     let mut f = RwLock::new(File::options().create(true).write(true).open(pid_file)?);
     let mut pid_lock = f.try_write()?;
+    pid_lock.set_len(0)?;
     write!(pid_lock, "{}", pid)?;
     pid_lock.flush()?;
 
