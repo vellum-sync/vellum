@@ -19,10 +19,7 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{
-    error::{Error, Result},
-    sync::Syncer,
-};
+use crate::error::{Error, Result};
 
 #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Entry {
@@ -133,45 +130,34 @@ pub struct History {
     history: HashMap<String, Vec<Chunk>>,
     merged: Vec<Entry>,
     last_write: DateTime<Utc>,
-    syncer: Box<dyn Syncer>,
 }
 
 impl History {
-    fn new<S: Into<String>>(host: S, syncer: Box<dyn Syncer>) -> Self {
+    fn new<S: Into<String>>(host: S) -> Self {
         Self {
             host: host.into(),
             history: HashMap::new(),
             merged: Vec::new(),
             last_write: Utc::now(),
-            syncer,
         }
     }
 
-    pub fn load<S: Into<String>>(host: S, syncer: Box<dyn Syncer>) -> Result<Self> {
-        let mut s = Self::new(host, syncer);
-        s.update()?;
+    pub fn load<S: Into<String>, P: AsRef<Path>>(host: S, path: P) -> Result<Self> {
+        let mut s = Self::new(host);
+        s.read(path)?;
         Ok(s)
     }
 
-    pub fn save(&mut self, force: bool) -> Result<()> {
-        let path = self.syncer.refresh()?;
+    pub fn save<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         self.write(path)?;
         self.last_write = Utc::now();
-        self.syncer.push_changes(&self.host, force)
-    }
-
-    pub fn update(&mut self) -> Result<()> {
-        let path = self.syncer.refresh()?;
-        self.read(path)?;
         Ok(())
     }
 
-    pub fn sync(&mut self, force: bool) -> Result<()> {
-        let path = self.syncer.refresh()?;
-        self.write(&path)?;
+    pub fn sync<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
+        self.write(path.as_ref())?;
         self.last_write = Utc::now();
-        self.read(&path)?;
-        self.syncer.push_changes(&self.host, force)
+        self.read(path.as_ref())
     }
 
     pub fn history(&self) -> Vec<Entry> {

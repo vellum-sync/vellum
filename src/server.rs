@@ -9,7 +9,7 @@ use std::{
     thread,
 };
 
-use clap;
+use clap::{self, crate_version};
 use fd_lock::RwLock;
 use fork::{Fork, daemon};
 use log::{debug, error, info};
@@ -22,7 +22,7 @@ use crate::{
     error::Result,
     history::{self, Entry, History},
     process::server_is_running,
-    sync::get_syncer,
+    sync::{Syncer, get_syncer},
 };
 
 #[derive(clap::Args, Debug, Default)]
@@ -86,6 +86,8 @@ fn start(config: &Config) -> Result<()> {
     pid_lock.set_len(0)?;
     write!(pid_lock, "{}", pid)?;
     pid_lock.flush()?;
+
+    info!("Starting vellum server v{} (pid: {pid})", crate_version!());
 
     // clean up an old socket file if there is one. We should only get here if
     // we got the pid lock.
@@ -156,7 +158,9 @@ pub fn ensure_ready(cfg: &Config) -> Result<()> {
 #[derive(Debug, Clone)]
 struct Server {
     cfg: Config,
+    host: String,
     history: Arc<Mutex<History>>,
+    syncer: Arc<Mutex<Box<dyn Syncer>>>,
 }
 
 impl Server {
@@ -167,9 +171,13 @@ impl Server {
         let host = cfg.hostname.to_string_lossy().to_string();
         let syncer = get_syncer(cfg)?;
 
+        let path = syncer.refresh()?;
+
         let s = Self {
             cfg: cfg.clone(),
-            history: Arc::new(Mutex::new(History::load(host, syncer)?)),
+            history: Arc::new(Mutex::new(History::load(host.clone(), path)?)),
+            host,
+            syncer: Arc::new(Mutex::new(syncer)),
         };
         s.start_background_sync();
 
@@ -330,12 +338,24 @@ impl Server {
     }
 
     fn sync_local(&self, force: bool) -> Result<()> {
-        let mut history = self.history.lock().unwrap();
-        history.save(force)
+        let syncer = self.syncer.lock().unwrap();
+        let path = syncer.refresh()?;
+        {
+            // we want to lock the history for the shortest time that we can
+            let mut history = self.history.lock().unwrap();
+            history.save(path)?;
+        }
+        syncer.push_changes(&self.host, force)
     }
 
     fn sync(&self, force: bool) -> Result<()> {
-        let mut history = self.history.lock().unwrap();
-        history.sync(force)
+        let syncer = self.syncer.lock().unwrap();
+        let path = syncer.refresh()?;
+        {
+            // we want to lock the history for the shortest time that we can
+            let mut history = self.history.lock().unwrap();
+            history.sync(path)?;
+        }
+        syncer.push_changes(&self.host, force)
     }
 }
