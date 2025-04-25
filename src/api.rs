@@ -10,6 +10,7 @@ use std::{
 
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{
     config::Config,
@@ -129,6 +130,15 @@ impl Connection {
         let msg = Message::Pong;
         self.send(&msg)
     }
+
+    pub fn update(&mut self, id: Uuid, cmd: String, session: String) -> Result<()> {
+        let msg = Message::Update { id, cmd, session };
+        match self.request(&msg)? {
+            Message::Ack => Ok(()),
+            Message::Error(e) => Err(Error::Generic(e)),
+            m => Err(Error::Generic(format!("unexpected response: {m:?}"))),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -177,7 +187,10 @@ impl<'a> Iterator for Incoming<'a> {
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Message {
     Ack,
-    Store { cmd: String, session: String },
+    Store {
+        cmd: String,
+        session: String,
+    },
     Error(String),
     HistoryRequest,
     History(Vec<Entry>),
@@ -185,6 +198,11 @@ pub enum Message {
     Exit(bool),
     Ping,
     Pong,
+    Update {
+        id: Uuid,
+        cmd: String,
+        session: String,
+    },
 }
 
 pub fn ping(cfg: &Config, wait: bool) -> Result<()> {

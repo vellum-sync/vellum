@@ -42,6 +42,9 @@ impl Session {
 }
 
 pub fn store(cfg: &Config, cmd: String) -> Result<()> {
+    if cmd.is_empty() {
+        return Ok(());
+    }
     server::ensure_ready(cfg)?;
     let mut conn = Connection::new(cfg)?;
     conn.store(cmd, Session::get()?.id)
@@ -236,5 +239,17 @@ pub fn do_move(cfg: &Config, args: MoveArgs) -> Result<()> {
 pub fn ping(cfg: &Config, wait: bool) -> Result<()> {
     api::ping(cfg, wait)?;
     info!("got pong from server");
+    Ok(())
+}
+
+pub fn delete(cfg: &Config, ids: Vec<String>) -> Result<()> {
+    server::ensure_ready(cfg)?;
+    let mut conn = Connection::new(cfg)?;
+    let session = Session::get()?;
+    for id in ids {
+        debug!("delete id: {id}");
+        let id = Uuid::parse_str(&id)?;
+        conn.update(id, "".to_string(), session.id.clone())?;
+    }
     Ok(())
 }

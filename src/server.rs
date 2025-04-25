@@ -15,6 +15,7 @@ use fork::{Fork, daemon};
 use log::{debug, error, info};
 use signal_hook::{consts::TERM_SIGNALS, flag, iterator::Signals};
 use ticker::Ticker;
+use uuid::Uuid;
 
 use crate::{
     api::{Connection, Listener, Message, ping},
@@ -327,6 +328,18 @@ impl Server {
                     error!("Failed to send pong: {e}");
                 }
             }
+            Message::Update { id, cmd, session } => {
+                debug!("Received request from session {session} to update command {id}: {cmd}");
+                if let Err(e) = self.update(id, cmd, session) {
+                    error!("Failed to update {id}: {e}");
+                    if let Err(e) = conn.error(format!("{e}")) {
+                        error!("Failed to send error: {e}");
+                    }
+                }
+                if let Err(e) = conn.ack() {
+                    error!("Failed to send ack: {e}");
+                };
+            }
             r => {
                 error!("received unknown request: {r:?}");
                 if let Err(e) = conn.error(format!("unknown request: {r:?}")) {
@@ -366,5 +379,10 @@ impl Server {
             history.sync(path)?;
         }
         syncer.push_changes(&self.host, force)
+    }
+
+    fn update(&self, id: Uuid, cmd: String, session: String) -> Result<()> {
+        let mut history = self.history.lock().unwrap();
+        history.update(id, cmd, session)
     }
 }

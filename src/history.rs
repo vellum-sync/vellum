@@ -1,6 +1,6 @@
 use std::{
     cmp::Ordering,
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     env,
     fs::{self, File},
     io::{self, Read, Write},
@@ -34,6 +34,21 @@ impl Entry {
     fn new<H: Into<String>, C: Into<String>, S: Into<String>>(host: H, cmd: C, session: S) -> Self {
         Self {
             id: Uuid::now_v7(),
+            ts: Utc::now(),
+            host: host.into(),
+            cmd: cmd.into(),
+            session: session.into(),
+        }
+    }
+
+    fn existing<I: Into<Uuid>, H: Into<String>, C: Into<String>, S: Into<String>>(
+        id: I,
+        host: H,
+        cmd: C,
+        session: S,
+    ) -> Self {
+        Self {
+            id: id.into(),
             ts: Utc::now(),
             host: host.into(),
             cmd: cmd.into(),
@@ -183,6 +198,22 @@ impl History {
         self.merged.push(entry);
     }
 
+    pub fn update<I: Into<Uuid>, C: Into<String>, S: Into<String>>(
+        &mut self,
+        id: I,
+        cmd: C,
+        session: S,
+    ) -> Result<()> {
+        let id = id.into();
+        if self.merged.iter().find(|entry| entry.id == id).is_none() {
+            return Err(Error::Generic(format!("unknown ID: {id}")));
+        }
+        let entry = Entry::existing(id, &self.host, cmd, session);
+        self.get_active_chunk().push(entry);
+        self.rebuild_merged();
+        Ok(())
+    }
+
     fn read<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         let mut added = false;
 
@@ -202,7 +233,7 @@ impl History {
 
         // if we added any new entries, then we need to rebuild merged
         if added {
-            self.rebuild_merged()?;
+            self.rebuild_merged();
         }
 
         Ok(())
@@ -307,20 +338,42 @@ impl History {
         Ok(())
     }
 
-    fn rebuild_merged(&mut self) -> Result<()> {
-        let mut new_merged = Vec::new();
+    fn rebuild_merged(&mut self) {
+        let mut entries: BTreeMap<Uuid, Vec<Entry>> = BTreeMap::new();
 
         for (_, chunks) in self.history.iter() {
             for chunk in chunks {
-                new_merged.extend(chunk.entries.iter().map(|entry| entry.clone()));
+                chunk.entries.iter().for_each(|entry| {
+                    entries
+                        .entry(entry.id.clone())
+                        .or_default()
+                        .push(entry.clone())
+                });
             }
         }
 
+        let mut new_merged: Vec<Entry> = entries
+            .into_iter()
+            .map(|(_, entry)| collapse_entries(entry))
+            .filter(|entry| !entry.cmd.is_empty())
+            .collect();
+
         new_merged.sort();
         self.merged = new_merged;
-
-        Ok(())
     }
+}
+
+fn collapse_entries(entries: Vec<Entry>) -> Entry {
+    if entries.len() == 1 {
+        return entries.into_iter().next().unwrap();
+    }
+    let mut entries = entries.into_iter().sorted();
+    // we know that we must have at least two entries, so we just unwrap the
+    // Options.
+    let mut first = entries.next().unwrap();
+    let last = entries.last().unwrap();
+    first.cmd = last.cmd;
+    first
 }
 
 struct HistoryFile {
