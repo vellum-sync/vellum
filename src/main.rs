@@ -57,6 +57,9 @@ enum Commands {
         ids: Vec<String>,
     },
 
+    /// Import command history from stdin or a file
+    Import(client::ImportArgs),
+
     /// Display the vellum configuration
     Config,
 
@@ -127,6 +130,7 @@ fn main() {
         Commands::History(args) => client::history(&config, args),
         Commands::Move(args) => client::do_move(&config, args),
         Commands::Delete { ids } => client::delete(&config, ids),
+        Commands::Import(args) => client::import(&config, args),
         Commands::Config => config.show(),
         Commands::Init(args) => init::init(args),
         Commands::Ping { wait } => client::ping(&config, wait),
