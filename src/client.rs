@@ -74,6 +74,10 @@ pub struct HistoryArgs {
     #[arg(short, long)]
     session: bool,
 
+    /// Show the command IDs (unique IDs that can be used for modifying history)
+    #[arg(long)]
+    id: bool,
+
     /// Show more complete output, instead of just the commands
     #[arg(short, long)]
     verbose: bool,
@@ -131,10 +135,17 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
             .iter()
             .fold(0, |max, entry| cmp::max(max, entry.host.len()));
         if args.verbose && !args.no_headers {
-            println!(
-                "{:index_size$}\t{:host_size$}\t{:35}\tCOMMAND",
-                "INDEX", "HOST", "TIMESTAMP"
-            );
+            if args.id {
+                println!(
+                    "{:36}\t{:host_size$}\t{:35}\tCOMMAND",
+                    "ID", "HOST", "TIMESTAMP"
+                );
+            } else {
+                println!(
+                    "{:index_size$}\t{:host_size$}\t{:35}\tCOMMAND",
+                    "INDEX", "HOST", "TIMESTAMP"
+                );
+            }
         }
         let mut filtered: Vec<(usize, &Entry)> = history
             .iter()
@@ -147,13 +158,25 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
         }
         for (index, entry) in filtered {
             if args.verbose {
-                println!(
-                    "{:index_size$}\t{:host_size$}\t{:35}\t{}",
-                    index + 1,
-                    entry.host,
-                    entry.ts.to_rfc3339(),
-                    entry.cmd
-                );
+                if args.id {
+                    println!(
+                        "{:36}\t{:host_size$}\t{:35}\t{}",
+                        entry.id,
+                        entry.host,
+                        entry.ts.to_rfc3339(),
+                        entry.cmd
+                    );
+                } else {
+                    println!(
+                        "{:index_size$}\t{:host_size$}\t{:35}\t{}",
+                        index + 1,
+                        entry.host,
+                        entry.ts.to_rfc3339(),
+                        entry.cmd
+                    );
+                }
+            } else if args.id {
+                println!("{}\t{}", entry.id, entry.cmd);
             } else {
                 println!("{}", entry.cmd);
             }
