@@ -18,6 +18,7 @@ use ticker::Ticker;
 
 use crate::{
     api::{Connection, Listener, Message, ping},
+    client,
     config::Config,
     error::Result,
     history::{self, Entry, History},
@@ -38,6 +39,10 @@ pub struct Args {
     /// Try to start the server, even if one appears to be running
     #[arg(long)]
     force: bool,
+
+    /// Stop the existing server, if there is one
+    #[arg(short, long)]
+    restart: bool,
 }
 
 pub fn run(config: &Config, args: Args) -> Result<()> {
@@ -47,6 +52,10 @@ pub fn run(config: &Config, args: Args) -> Result<()> {
         error!("Unable to get crypt key from $VELLUM_KEY, refusing to start server:");
         error!("  {e}");
         exit(1);
+    }
+
+    if args.restart {
+        client::stop_server(config, false)?;
     }
 
     if !args.force && server_is_running(config)? {
