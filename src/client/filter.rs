@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use chrono::{DateTime, Utc};
 
 use crate::{error::Result, history::Entry};
@@ -22,19 +24,39 @@ pub struct FilterArgs {
     /// multiple times)
     #[arg(long)]
     host: Option<Vec<String>>,
+
+    /// Only include commands that were stored more than the given duration ago
+    #[arg(long, value_parser = humantime::parse_duration, value_name = "DURATION")]
+    min_age: Option<Duration>,
+
+    /// Only include commands that were stored within the specified duration
+    #[arg(long, value_parser = humantime::parse_duration, value_name = "DURATION")]
+    max_age: Option<Duration>,
 }
 
 pub struct Filter {
     args: FilterArgs,
 
+    min_age: Option<DateTime<Utc>>,
+    max_age: Option<DateTime<Utc>>,
     current_session: Session,
 }
 
 impl Filter {
     pub fn new(args: FilterArgs) -> Result<Self> {
         let current_session = Session::get()?;
+        let min_age = match args.min_age {
+            Some(d) => Some(Utc::now() - d),
+            None => None,
+        };
+        let max_age = match args.max_age {
+            Some(d) => Some(Utc::now() - d),
+            None => None,
+        };
         Ok(Self {
             args,
+            min_age,
+            max_age,
             current_session,
         })
     }
@@ -57,6 +79,16 @@ impl Filter {
         }
         if let Some(host) = &self.args.host {
             if !host.contains(&entry.host) {
+                return false;
+            }
+        }
+        if let Some(min_age) = self.min_age {
+            if entry.ts >= min_age {
+                return false;
+            }
+        }
+        if let Some(max_age) = self.max_age {
+            if entry.ts < max_age {
                 return false;
             }
         }

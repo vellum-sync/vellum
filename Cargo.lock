@@ -1325,6 +1325,7 @@ dependencies = [
  "fork",
  "git2",
  "hostname",
+ "humantime",
  "humantime-serde",
  "include_dir",
  "itertools 0.14.0",
