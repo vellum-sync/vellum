@@ -29,4 +29,5 @@ tempfile = "3.19.1"
 ticker = "0.1.1"
 toml = "0.8.20"
 uuid = { version = "1.16.0", features = ["serde", "v7"] }
+which = "7.0.3"
 xdg = { version = "2.5.2", features = ["serde"] }

@@ -3,13 +3,14 @@ use std::{
     env,
     fs::{self, File},
     io::{BufRead, BufReader, Write, stdin, stdout},
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, exit},
 };
 
 use log::{debug, info, warn};
 use tempfile::NamedTempFile;
 use uuid::Uuid;
+use which::which;
 
 use crate::{
     api::Connection,
@@ -124,23 +125,29 @@ fn write_temp_file<P: AsRef<Path>>(dir: P, history: &[Entry]) -> Result<NamedTem
 
 fn edit_file<P: AsRef<Path>>(path: P) -> Result<()> {
     let editor = get_editor()?;
-    debug!("edit using {editor}");
+    debug!("edit using {editor:?}");
     let status = Command::new(&editor).arg(path.as_ref()).status()?;
     if !status.success() {
-        return Err(Error::Generic(format!("{editor} exited with an error")));
+        return Err(Error::Generic(format!("{editor:?} exited with an error")));
     }
     Ok(())
 }
 
-fn get_editor() -> Result<String> {
+fn get_editor() -> Result<PathBuf> {
     if let Ok(editor) = env::var("VELLUM_EDITOR") {
-        return Ok(editor);
+        return Ok(editor.into());
     }
     if let Ok(visual) = env::var("VISUAL") {
-        return Ok(visual);
+        return Ok(visual.into());
     }
     if let Ok(editor) = env::var("EDITOR") {
-        return Ok(editor);
+        return Ok(editor.into());
+    }
+    if let Ok(nano) = which("nano") {
+        return Ok(nano);
+    }
+    if let Ok(vi) = which("vi") {
+        return Ok(vi);
     }
     Err(Error::Generic("unable to find editor".to_string()))
 }
