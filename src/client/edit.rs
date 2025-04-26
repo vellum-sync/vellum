@@ -55,7 +55,6 @@ pub struct EditArgs {
 }
 
 pub fn edit(cfg: &Config, args: EditArgs) -> Result<()> {
-    let session = Session::get()?.id;
     let filter = Filter::new(args.filter)?;
     let mut conn = Connection::new(cfg)?;
     let history: Vec<Entry> = filter.history_request(&mut conn)?;
@@ -65,29 +64,7 @@ pub fn edit(cfg: &Config, args: EditArgs) -> Result<()> {
         return Ok(());
     }
 
-    fs::create_dir_all(&cfg.cache_dir)?;
-    let mut temp_file = NamedTempFile::new_in(&cfg.cache_dir)?;
-    writeln!(temp_file, "{}", HEADER)?;
-    for entry in history.iter() {
-        writeln!(temp_file, "{}\t{}", entry.id, entry.cmd)?;
-    }
-    temp_file.flush()?;
-
-    debug!("temp file: {:?}", temp_file.path());
-
-    let editor = get_editor()?;
-    debug!("edit using {editor}");
-    let status = Command::new(&editor).arg(temp_file.path()).status()?;
-    if !status.success() {
-        return Err(Error::Generic(format!("{editor} exited with an error")));
-    }
-
-    let edited = parse_file(temp_file.path())?;
-
-    // make sure temp_file exists until we have read the file back in
-    drop(temp_file);
-
-    let changes = get_changes(history, edited);
+    let changes = edit_history(&cfg.cache_dir, history)?;
     match changes.len() {
         0 => {
             info!("no entries modified");
@@ -98,13 +75,7 @@ pub fn edit(cfg: &Config, args: EditArgs) -> Result<()> {
     };
 
     if !args.quiet {
-        for entry in changes.iter() {
-            if &entry.cmd == "" {
-                info!("{}: <deleted>", entry.id);
-            } else {
-                info!("{}: {}", entry.id, entry.cmd);
-            }
-        }
+        show_changes(&changes);
     }
 
     if args.dry_run {
@@ -117,10 +88,46 @@ pub fn edit(cfg: &Config, args: EditArgs) -> Result<()> {
         stdin().read_line(&mut buf)?;
     }
 
+    let session = Session::get()?.id;
     for entry in changes {
         conn.update(entry.id, entry.cmd, session.clone())?;
     }
 
+    Ok(())
+}
+
+fn edit_history<P: AsRef<Path>>(dir: P, history: Vec<Entry>) -> Result<Vec<Entry>> {
+    let temp_file = write_temp_file(dir, &history)?;
+
+    edit_file(temp_file.path())?;
+
+    let edited = parse_file(temp_file.path())?;
+
+    // make sure temp_file exists until we have read the file back in
+    drop(temp_file);
+
+    Ok(get_changes(history, edited))
+}
+
+fn write_temp_file<P: AsRef<Path>>(dir: P, history: &[Entry]) -> Result<NamedTempFile> {
+    fs::create_dir_all(dir.as_ref())?;
+    let mut temp_file = NamedTempFile::new_in(dir)?;
+    debug!("temp file: {:?}", temp_file.path());
+    writeln!(temp_file, "{}", HEADER)?;
+    for entry in history {
+        writeln!(temp_file, "{}\t{}", entry.id, entry.cmd)?;
+    }
+    temp_file.flush()?;
+    Ok(temp_file)
+}
+
+fn edit_file<P: AsRef<Path>>(path: P) -> Result<()> {
+    let editor = get_editor()?;
+    debug!("edit using {editor}");
+    let status = Command::new(&editor).arg(path.as_ref()).status()?;
+    if !status.success() {
+        return Err(Error::Generic(format!("{editor} exited with an error")));
+    }
     Ok(())
 }
 
@@ -180,4 +187,14 @@ fn get_changes(history: Vec<Entry>, edited: HashMap<Uuid, String>) -> Vec<Entry>
         changes.push(entry);
     }
     changes
+}
+
+fn show_changes(changes: &[Entry]) {
+    for entry in changes {
+        if &entry.cmd == "" {
+            info!("{}: <deleted>", entry.id);
+        } else {
+            info!("{}: {}", entry.id, entry.cmd);
+        }
+    }
 }
