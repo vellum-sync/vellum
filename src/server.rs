@@ -5,7 +5,11 @@ use std::{
     os::unix::process::CommandExt,
     path::Path,
     process::{self, Command, exit},
-    sync::{Arc, Mutex, atomic::AtomicBool},
+    sync::{
+        Arc, Mutex,
+        atomic::AtomicBool,
+        mpsc::{SyncSender, sync_channel},
+    },
     thread,
 };
 
@@ -21,7 +25,7 @@ use crate::{
     api::{Connection, Listener, Message, ping},
     client,
     config::Config,
-    error::Result,
+    error::{Error, Result},
     history::{self, Entry, History},
     process::server_is_running,
     sync::{Syncer, get_syncer},
@@ -340,6 +344,24 @@ impl Server {
                     error!("Failed to send ack: {e}");
                 };
             }
+            Message::Rebuild => {
+                debug!("Received request to rebuild data store");
+                let s = self.clone();
+                let (sender, receiver) = sync_channel(0);
+                let worker = thread::spawn(move || s.rebuild(sender));
+                for status in receiver {
+                    if let Err(e) = conn.rebuild_status(status) {
+                        error!("Failed to send status: {e}");
+                    }
+                }
+                let result = match worker.join() {
+                    Ok(r) => r,
+                    Err(e) => Err(Error::Generic(format!("rebuild thread paniced: {e:?}"))),
+                };
+                if let Err(e) = conn.rebuild_complete(result) {
+                    error!("Failed to send complete: {e}");
+                }
+            }
             r => {
                 error!("received unknown request: {r:?}");
                 if let Err(e) = conn.error(format!("unknown request: {r:?}")) {
@@ -384,5 +406,13 @@ impl Server {
     fn update(&self, id: Uuid, cmd: String, session: String) -> Result<()> {
         let mut history = self.history.lock().unwrap();
         history.update(id, cmd, session)
+    }
+
+    fn rebuild(&self, sender: SyncSender<String>) -> Result<()> {
+        debug!("rebuild background thread started");
+        sender.send(format!("Starting rebuild of data store"))?;
+        sender.send(format!("rebuild not yet implemented"))?;
+        debug!("rebuild background thread complete");
+        Ok(())
     }
 }

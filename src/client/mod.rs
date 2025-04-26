@@ -68,3 +68,13 @@ pub fn delete(cfg: &Config, ids: Vec<String>) -> Result<()> {
     }
     Ok(())
 }
+
+pub fn rebuild(cfg: &Config) -> Result<()> {
+    server::ensure_ready(cfg)?;
+    let mut conn = Connection::new(cfg)?;
+    for status in conn.rebuild()? {
+        let status = status?;
+        info!("{status}");
+    }
+    Ok(())
+}

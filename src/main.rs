@@ -54,9 +54,15 @@ enum Commands {
     Edit(client::EditArgs),
 
     /// Mark specified history entries as deleted
+    ///
+    /// NOTE: When entries are deleted they are only marked as deleted. This
+    /// means that they are no longer visible from a client, but the deleted
+    /// entry is still stored on disk / in git (in encrypted form). If you want
+    /// to completely erase the entry you will also need to run `vellum rebuild`
+    /// to rebuild the on-disk data.
     Delete {
         /// IDs of entries to be marked as deleted
-        #[clap(required = true)]
+        #[arg(required = true)]
         ids: Vec<String>,
     },
 
@@ -82,6 +88,9 @@ enum Commands {
         #[arg(short, long)]
         force: bool,
     },
+
+    /// Request the server rebuild the sync data
+    Rebuild,
 
     /// Run the background history management server
     Server(server::Args),
@@ -139,6 +148,7 @@ fn main() {
         Commands::Init(args) => init::init(args),
         Commands::Ping { wait } => client::ping(&config, wait),
         Commands::Sync { force } => client::sync(&config, force),
+        Commands::Rebuild => client::rebuild(&config),
         Commands::Server(args) => server::run(&config, args),
         Commands::Stop { no_sync } => client::stop_server(&config, no_sync),
     } {

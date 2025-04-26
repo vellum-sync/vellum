@@ -139,6 +139,26 @@ impl Connection {
             m => Err(Error::Generic(format!("unexpected response: {m:?}"))),
         }
     }
+
+    pub fn rebuild<'a>(&'a mut self) -> Result<Rebuilder<'a>> {
+        let msg = Message::Rebuild;
+        self.send(&msg)?;
+        Ok(Rebuilder::new(self))
+    }
+
+    pub fn rebuild_status(&mut self, status: String) -> Result<()> {
+        let msg = Message::RebuildStatus(status);
+        self.send(&msg)
+    }
+
+    pub fn rebuild_complete(&mut self, result: Result<()>) -> Result<()> {
+        let result = match result {
+            Ok(()) => None,
+            Err(e) => Some(format!("{e}")),
+        };
+        let msg = Message::RebuildComplete(result);
+        self.send(&msg)
+    }
 }
 
 #[derive(Debug)]
@@ -184,6 +204,55 @@ impl<'a> Iterator for Incoming<'a> {
     }
 }
 
+pub struct Rebuilder<'a> {
+    conn: &'a mut Connection,
+    complete: bool,
+}
+
+impl<'a> Rebuilder<'a> {
+    fn new(conn: &'a mut Connection) -> Self {
+        Self {
+            conn,
+            complete: false,
+        }
+    }
+}
+
+impl<'a> Iterator for Rebuilder<'a> {
+    type Item = Result<String>;
+
+    fn next(&mut self) -> Option<<Self as Iterator>::Item> {
+        if self.complete {
+            return None;
+        }
+        let msg = match self.conn.receive() {
+            Ok(Some(msg)) => msg,
+            Ok(None) => {
+                self.complete = true;
+                return Some(Err(Error::Generic(format!("server disconnected!"))));
+            }
+            Err(e) => {
+                self.complete = true;
+                return Some(Err(e));
+            }
+        };
+        match msg {
+            Message::RebuildStatus(status) => Some(Ok(status)),
+            Message::RebuildComplete(result) => match result {
+                Some(msg) => {
+                    self.complete = true;
+                    Some(Err(Error::Generic(format!("server returned error: {msg}"))))
+                }
+                None => None,
+            },
+            m => {
+                self.complete = true;
+                Some(Err(Error::Generic(format!("unexpected response: {m:?}"))))
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Message {
     Ack,
@@ -203,6 +272,9 @@ pub enum Message {
         cmd: String,
         session: String,
     },
+    Rebuild,
+    RebuildStatus(String),
+    RebuildComplete(Option<String>),
 }
 
 pub fn ping(cfg: &Config, wait: bool) -> Result<()> {

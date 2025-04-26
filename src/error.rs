@@ -1,4 +1,12 @@
-use std::{env::VarError, error, fmt::Display, io, num::ParseIntError, result};
+use std::{
+    env::VarError,
+    error,
+    fmt::{Debug, Display},
+    io,
+    num::ParseIntError,
+    result,
+    sync::mpsc::SendError,
+};
 
 use aws_lc_rs::error::{KeyRejected, Unspecified};
 use base64::DecodeError;
@@ -166,6 +174,12 @@ impl From<ParseIntError> for Error {
 impl From<chrono::ParseError> for Error {
     fn from(value: chrono::ParseError) -> Self {
         Self::ParseTime(value)
+    }
+}
+
+impl<T: Debug> From<SendError<T>> for Error {
+    fn from(value: SendError<T>) -> Self {
+        Self::Generic(format!("failed to send data: {value}"))
     }
 }
 
