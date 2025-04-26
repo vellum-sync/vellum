@@ -1,3 +1,5 @@
+use chrono::{DateTime, Utc};
+
 use crate::{error::Result, history::Entry};
 
 use super::Session;
@@ -7,6 +9,19 @@ pub struct FilterArgs {
     /// Only include commands stored by the current session
     #[arg(short, long)]
     session: bool,
+
+    /// Only include commands stored on or after this time (UTC ISO8601 timestamp)
+    #[arg(long, value_name = "DATE")]
+    after: Option<DateTime<Utc>>,
+
+    /// Only include commands stored before this time (UTC ISO8601 timestamp)
+    #[arg(long, value_name = "DATE")]
+    before: Option<DateTime<Utc>>,
+
+    /// Only include commands stored by a specified host (can be specified
+    /// multiple times)
+    #[arg(long)]
+    host: Option<Vec<String>>,
 }
 
 pub struct Filter {
@@ -25,6 +40,26 @@ impl Filter {
     }
 
     pub fn entry(&self, entry: &Entry) -> bool {
-        !self.args.session || self.current_session.includes_entry(entry)
+        if self.args.session {
+            if !self.current_session.includes_entry(entry) {
+                return false;
+            }
+        }
+        if let Some(after) = self.args.after {
+            if entry.ts < after {
+                return false;
+            }
+        }
+        if let Some(before) = self.args.before {
+            if entry.ts >= before {
+                return false;
+            }
+        }
+        if let Some(host) = &self.args.host {
+            if !host.contains(&entry.host) {
+                return false;
+            }
+        }
+        true
     }
 }
