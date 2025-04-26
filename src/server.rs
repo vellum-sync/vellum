@@ -11,6 +11,7 @@ use std::{
         mpsc::{SyncSender, sync_channel},
     },
     thread,
+    time::Duration,
 };
 
 use clap::{self, crate_version};
@@ -173,8 +174,9 @@ pub fn ensure_ready(cfg: &Config) -> Result<()> {
 struct Server {
     cfg: Config,
     host: String,
-    history: Arc<Mutex<History>>,
+    // NOTE: syncer should always be locked before history.
     syncer: Arc<Mutex<Box<dyn Syncer>>>,
+    history: Arc<Mutex<History>>,
 }
 
 impl Server {
@@ -410,8 +412,28 @@ impl Server {
 
     fn rebuild(&self, sender: SyncSender<String>) -> Result<()> {
         debug!("rebuild background thread started");
-        sender.send(format!("Starting rebuild of data store"))?;
-        sender.send(format!("rebuild not yet implemented"))?;
+
+        sender.send("Refreshing git state".to_string())?;
+        let syncer = self.syncer.lock().unwrap();
+        let path = syncer.refresh()?;
+        let history = self.history.lock().unwrap();
+
+        sender.send("Locking git repo ...".to_string())?;
+        let sync_lock = syncer.lock()?;
+
+        sender.send("Waiting 5s to allow in progress syncs to complete ...".to_string())?;
+        thread::sleep(Duration::from_secs(5));
+
+        sender.send("Unlocking git repo ...".to_string())?;
+        sync_lock.unlock()?;
+
+        // we need to drop the lock first, otherwise we can't drop syncer
+        drop(sync_lock);
+        // make sure that syncer and history stay around for the whole function
+        // so that they stay locked for the entire time.
+        drop(history);
+        drop(syncer);
+
         debug!("rebuild background thread complete");
         Ok(())
     }

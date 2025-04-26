@@ -5,7 +5,7 @@ use std::{
 
 use crate::error::Result;
 
-use super::Syncer;
+use super::{SyncGuard, Syncer};
 
 #[derive(Debug, Clone)]
 pub struct Dummy {
@@ -27,6 +27,16 @@ impl Syncer for Dummy {
     }
 
     fn push_changes(&self, _host: &str, _force: bool) -> Result<()> {
+        Ok(())
+    }
+
+    fn lock<'a>(&'a self) -> Result<Box<dyn super::SyncGuard + 'a>> {
+        Ok(Box::new(self.clone()))
+    }
+}
+
+impl<'a> SyncGuard for Dummy {
+    fn unlock(&self) -> Result<()> {
         Ok(())
     }
 }

@@ -1,13 +1,15 @@
 use std::{
     fmt, fs,
     path::{Path, PathBuf},
-    result,
+    result, thread,
+    time::{Duration, Instant},
 };
 
 use git2::{
-    Commit, Cred, CredentialType, ErrorCode, FetchOptions, IndexAddOption, Oid, PushOptions,
-    Rebase, RebaseOptions, RemoteCallbacks, Repository, build::RepoBuilder,
+    Commit, Cred, CredentialType, ErrorCode, FetchOptions, FetchPrune, Index, IndexAddOption, Oid,
+    PushOptions, Rebase, RebaseOptions, RemoteCallbacks, Repository, build::RepoBuilder,
 };
+use humantime::format_duration;
 use log::{debug, error};
 
 use crate::{
@@ -15,7 +17,11 @@ use crate::{
     error::{Error, Result},
 };
 
-use super::Syncer;
+use super::{SyncGuard, Syncer};
+
+const LOCK_REF: &str = "refs/tags/lock";
+
+const MAX_LOCK_WAIT: Duration = Duration::from_secs(300);
 
 pub struct Git {
     path: PathBuf,
@@ -57,11 +63,7 @@ impl Git {
         })
     }
 
-    fn fetch(&self) -> Result<bool> {
-        debug!("start fetch ...");
-
-        let mut changes = false;
-
+    fn try_fetch(&self, mut locked: bool, mut changes: bool) -> Result<(bool, bool)> {
         let head_ref = self.repo.head()?.resolve()?;
         let ref_name = head_ref
             .name()
@@ -84,19 +86,49 @@ impl Git {
                 if name == upstream_ref_name {
                     changes = true;
                 }
+                if name == LOCK_REF {
+                    locked = !new.is_zero();
+                    debug!("repo is locked: {locked}");
+                }
                 true
             });
 
         let mut opts = FetchOptions::new();
-        opts.remote_callbacks(cbs);
+        opts.remote_callbacks(cbs).prune(FetchPrune::On);
 
         let mut remote = self.repo.find_remote("origin")?;
 
-        remote.fetch::<&str>(&[ref_name], Some(&mut opts), None)?;
+        remote.fetch::<&str>(
+            &[ref_name, "refs/tags/*:refs/tags/*"],
+            Some(&mut opts),
+            None,
+        )?;
 
         // make sure that the update_tips callback is gone, since it implicitly
-        // borrows changes.
+        // borrows locked/changes.
         drop(opts);
+
+        Ok((locked, changes))
+    }
+
+    fn fetch(&self) -> Result<bool> {
+        debug!("start fetch ...");
+
+        let (mut locked, mut changes) = self.try_fetch(false, false)?;
+
+        let start = Instant::now();
+        while locked && start.elapsed() < MAX_LOCK_WAIT {
+            debug!("waiting for repo to unlock ...");
+            thread::sleep(Duration::from_secs(1));
+            (locked, changes) = self.try_fetch(locked, changes)?;
+        }
+
+        if locked {
+            return Err(Error::Generic(format!(
+                "repo did not unlock within {}",
+                format_duration(start.elapsed())
+            )));
+        }
 
         debug!("fetch has changes: {changes}");
 
@@ -269,6 +301,36 @@ impl Git {
         debug!("Created commit {commit:?}");
         Ok(Some(commit))
     }
+
+    fn unlock(&self) -> Result<()> {
+        let cm = CredsManager::new(&self.cfg)?;
+
+        let mut cbs = RemoteCallbacks::new();
+        cbs.credentials(|url, username, types| cm.lookup(url, username, types))
+            .push_update_reference(|name, status| {
+                debug!("update reference: name: {name} status: {status:?}");
+                if let Some(msg) = status {
+                    Err(git2::Error::from_str(msg))
+                } else {
+                    Ok(())
+                }
+            })
+            .update_tips(|name, old, new| {
+                debug!("update tip: name: {name} old: {old:?} new: {new:?}");
+                true
+            });
+
+        let mut opts = PushOptions::new();
+        opts.remote_callbacks(cbs);
+
+        let mut remote = self.repo.find_remote("origin")?;
+
+        let refspec = format!(":{LOCK_REF}");
+
+        remote.push(&[&refspec], Some(&mut opts))?;
+
+        Ok(())
+    }
 }
 
 impl fmt::Debug for Git {
@@ -302,6 +364,52 @@ impl Syncer for Git {
         }
 
         Ok(())
+    }
+
+    fn lock<'a>(&'a self) -> Result<Box<dyn SyncGuard + 'a>> {
+        // TODO(jp3): we should be creating the lock here ...
+
+        let mut index = Index::new()?;
+        let oid = index.write_tree_to(&self.repo)?;
+        let tree = self.repo.find_tree(oid)?;
+
+        debug!("lock tree: {tree:?}");
+
+        let message = format!("lock for {}", self.cfg.hostname.to_string_lossy());
+
+        let author = self.repo.signature()?;
+        let commit = self
+            .repo
+            .commit(None, &author, &author, &message, &tree, &[])?;
+        debug!("Created commit {commit:?}");
+
+        let cm = CredsManager::new(&self.cfg)?;
+
+        let mut cbs = RemoteCallbacks::new();
+        cbs.credentials(|url, username, types| cm.lookup(url, username, types))
+            .push_update_reference(|name, status| {
+                debug!("update reference: name: {name} status: {status:?}");
+                if let Some(msg) = status {
+                    Err(git2::Error::from_str(msg))
+                } else {
+                    Ok(())
+                }
+            })
+            .update_tips(|name, old, new| {
+                debug!("update tip: name: {name} old: {old:?} new: {new:?}");
+                true
+            });
+
+        let mut opts = PushOptions::new();
+        opts.remote_callbacks(cbs);
+
+        let mut remote = self.repo.find_remote("origin")?;
+
+        let refspec = format!("{commit:?}:{LOCK_REF}");
+
+        remote.push(&[&refspec], Some(&mut opts))?;
+
+        Ok(Box::new(GitGuard::new(self)))
     }
 }
 
@@ -344,5 +452,22 @@ impl CredsManager {
                 "no supported auth methods available: {types:?}"
             )))
         }
+    }
+}
+
+#[derive(Debug)]
+struct GitGuard<'a> {
+    git: &'a Git,
+}
+
+impl<'a> GitGuard<'a> {
+    fn new(git: &'a Git) -> Self {
+        Self { git }
+    }
+}
+
+impl<'a> SyncGuard for GitGuard<'a> {
+    fn unlock(&self) -> Result<()> {
+        self.git.unlock()
     }
 }
