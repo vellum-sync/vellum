@@ -82,11 +82,9 @@ pub fn edit(cfg: &Config, args: EditArgs) -> Result<()> {
         return Ok(());
     }
 
-    if !args.force {
-        if !confirm_changes()? {
-            info!("changes aborted");
-            exit(0);
-        }
+    if !args.force && !confirm_changes()? {
+        info!("changes aborted");
+        exit(0);
     }
 
     let session = Session::get()?.id;
