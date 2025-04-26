@@ -2,9 +2,9 @@ use std::{
     collections::HashMap,
     env,
     fs::{self, File},
-    io::{BufRead, BufReader, Write, stdin},
+    io::{BufRead, BufReader, Write, stdin, stdout},
     path::Path,
-    process::Command,
+    process::{Command, exit},
 };
 
 use log::{debug, info, warn};
@@ -83,15 +83,18 @@ pub fn edit(cfg: &Config, args: EditArgs) -> Result<()> {
     }
 
     if !args.force {
-        println!("Press enter to apply change, Ctrl-C to abort:");
-        let mut buf = String::with_capacity(1024);
-        stdin().read_line(&mut buf)?;
+        if !confirm_changes()? {
+            info!("changes aborted");
+            exit(0);
+        }
     }
 
     let session = Session::get()?.id;
     for entry in changes {
         conn.update(entry.id, entry.cmd, session.clone())?;
     }
+
+    info!("changes saved");
 
     Ok(())
 }
@@ -195,6 +198,21 @@ fn show_changes(changes: &[Entry]) {
             info!("{}: <deleted>", entry.id);
         } else {
             info!("{}: {}", entry.id, entry.cmd);
+        }
+    }
+}
+
+fn confirm_changes() -> Result<bool> {
+    let mut buf = String::with_capacity(1024);
+    loop {
+        print!("Apply changes? (yes/no): ");
+        stdout().flush()?;
+        buf.clear();
+        stdin().read_line(&mut buf)?;
+        match buf.trim().to_lowercase().as_str() {
+            "yes" => return Ok(true),
+            "no" => return Ok(false),
+            _ => println!("Please enter \"yes\" or \"no\""),
         }
     }
 }
