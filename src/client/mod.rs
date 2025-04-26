@@ -9,6 +9,7 @@ use crate::{
     server,
 };
 
+mod filter;
 mod history;
 mod import;
 mod r#move;
@@ -17,7 +18,9 @@ mod session;
 pub use history::*;
 pub use import::*;
 pub use r#move::*;
-pub use session::*;
+
+use filter::*;
+use session::*;
 
 pub fn store(cfg: &Config, cmd: String) -> Result<()> {
     if cmd.is_empty() {

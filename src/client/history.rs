@@ -2,13 +2,12 @@ use std::{cmp, collections::HashSet};
 
 use crate::{api::Connection, config::Config, error::Result, history::Entry, server};
 
-use super::Session;
+use super::{Filter, FilterArgs};
 
 #[derive(clap::Args, Debug)]
 pub struct HistoryArgs {
-    /// Only show commands stored by the current session
-    #[arg(short, long)]
-    session: bool,
+    #[command(flatten)]
+    filter: FilterArgs,
 
     /// Show the command IDs (unique IDs that can be used for modifying history)
     #[arg(long)]
@@ -42,12 +41,12 @@ pub struct HistoryArgs {
 
 pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
     server::ensure_ready(cfg)?;
-    let current_session = Session::get()?;
+    let filter = Filter::new(args.filter)?;
     let mut conn = Connection::new(cfg)?;
     let mut history: Vec<Entry> = conn
         .history_request()?
         .into_iter()
-        .filter(|entry| !args.session || current_session.includes_entry(entry))
+        .filter(|entry| filter.includes_entry(entry))
         .collect();
     let mut seen = HashSet::new();
     if args.fzf {
