@@ -1218,12 +1218,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ticker"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f6821a2afe2700471d4572a25bcbfc091d6d596902a279ed41af139f350b76e"
-
-[[package]]
 name = "tinystr"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1361,7 +1355,6 @@ dependencies = [
  "signal-hook",
  "sysinfo",
  "tempfile",
- "ticker",
  "toml",
  "uuid",
  "which 7.0.3",

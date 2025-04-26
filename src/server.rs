@@ -14,12 +14,13 @@ use std::{
     time::Duration,
 };
 
+use chrono::{DurationRound, TimeDelta, Utc};
 use clap::{self, crate_version};
 use fd_lock::RwLock;
 use fork::{Fork, daemon};
+use humantime::format_duration;
 use log::{debug, error, info};
 use signal_hook::{consts::TERM_SIGNALS, flag, iterator::Signals};
-use ticker::Ticker;
 use uuid::Uuid;
 
 use crate::{
@@ -214,8 +215,31 @@ impl Server {
             "starting background sync with {:?} interval",
             self.cfg.sync.interval
         );
-        let ticker = Ticker::new(0.., self.cfg.sync.interval);
-        for _ in ticker {
+        let interval = match TimeDelta::from_std(self.cfg.sync.interval) {
+            Ok(i) => i,
+            Err(e) => {
+                error!("failed to convert sync interval: {e}");
+                exit(1)
+            }
+        };
+        loop {
+            let next = match Utc::now().duration_round_up(interval) {
+                Ok(n) => n,
+                Err(e) => {
+                    error!("failed to calculate next sync interval: {e}");
+                    exit(1)
+                }
+            };
+            debug!("next sync is: {next}");
+            let wait = match (next - Utc::now()).to_std() {
+                Ok(w) => w,
+                Err(e) => {
+                    error!("failed to calculate wait: {e}");
+                    exit(1)
+                }
+            };
+            debug!("wait is: {}", format_duration(wait));
+            thread::sleep(wait);
             if let Err(e) = self.sync(false) {
                 error!("Failed to run background sync: {e}");
             }
