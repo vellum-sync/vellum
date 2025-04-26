@@ -14,10 +14,6 @@ pub struct MoveArgs {
     #[arg(short, long)]
     with_id: bool,
 
-    /// Look for commands that match a given prefix
-    #[arg(short, long)]
-    prefix: Option<String>,
-
     /// How far to move through the history relative to the start
     distance: isize,
 
@@ -35,14 +31,7 @@ pub fn do_move(cfg: &Config, args: MoveArgs) -> Result<()> {
 
     let mut conn = Connection::new(cfg)?;
     let filter = Filter::new(args.filter)?;
-    let history: Vec<Entry> = conn
-        .history_request()?
-        .into_iter()
-        .filter(|entry| filter.entry(entry))
-        .filter(|entry| {
-            args.prefix.is_none() || entry.cmd.starts_with(args.prefix.as_ref().unwrap())
-        })
-        .collect();
+    let history: Vec<Entry> = filter.history_request(&mut conn)?;
 
     let start = match args.start {
         Some(s) if !s.is_empty() => {

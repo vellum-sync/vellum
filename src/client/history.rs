@@ -43,11 +43,7 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
     server::ensure_ready(cfg)?;
     let filter = Filter::new(args.filter)?;
     let mut conn = Connection::new(cfg)?;
-    let mut history: Vec<Entry> = conn
-        .history_request()?
-        .into_iter()
-        .filter(|entry| filter.entry(entry))
-        .collect();
+    let mut history: Vec<Entry> = filter.history_request(&mut conn)?;
     let mut seen = HashSet::new();
     if args.fzf {
         for (index, entry) in history

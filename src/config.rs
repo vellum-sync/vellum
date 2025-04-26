@@ -14,6 +14,9 @@ pub struct Config {
     #[serde(skip)]
     pub path: Option<PathBuf>,
 
+    #[serde(default = "default_cache_dir")]
+    pub cache_dir: PathBuf,
+
     #[serde(default = "default_state_dir")]
     pub state_dir: PathBuf,
 
@@ -99,6 +102,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             path: None,
+            cache_dir: default_cache_dir(),
             state_dir: default_state_dir(),
             hostname: default_hostname(),
             sync: Sync::default(),
@@ -115,6 +119,13 @@ impl Default for Sync {
             interval: default_sync_interval(),
             path: default_sync_path(),
         }
+    }
+}
+
+fn default_cache_dir() -> PathBuf {
+    match BaseDirectories::with_prefix("vellum") {
+        Ok(d) => d.get_cache_home(),
+        Err(e) => panic!("failed to load XDG directories: {e}"),
     }
 }
 

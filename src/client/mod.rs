@@ -9,12 +9,14 @@ use crate::{
     server,
 };
 
+mod edit;
 mod filter;
 mod history;
 mod import;
 mod r#move;
 mod session;
 
+pub use edit::*;
 pub use history::*;
 pub use import::*;
 pub use r#move::*;

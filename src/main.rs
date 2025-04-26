@@ -50,6 +50,9 @@ enum Commands {
     /// Move through the history relative to a given point
     Move(client::MoveArgs),
 
+    /// Edit stored history
+    Edit(client::EditArgs),
+
     /// Mark specified history entries as deleted
     Delete {
         /// IDs of entries to be marked as deleted
@@ -129,6 +132,7 @@ fn main() {
         Commands::Store { shell_command } => client::store(&config, shell_command),
         Commands::History(args) => client::history(&config, args),
         Commands::Move(args) => client::do_move(&config, args),
+        Commands::Edit(args) => client::edit(&config, args),
         Commands::Delete { ids } => client::delete(&config, ids),
         Commands::Import(args) => client::import(&config, args),
         Commands::Config => config.show(),

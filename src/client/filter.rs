@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 
-use crate::{error::Result, history::Entry};
+use crate::{api::Connection, error::Result, history::Entry};
 
 use super::Session;
 
@@ -32,6 +32,10 @@ pub struct FilterArgs {
     /// Only include commands that were stored within the specified duration
     #[arg(long, value_parser = humantime::parse_duration, value_name = "DURATION")]
     max_age: Option<Duration>,
+
+    /// Only include commands that match the given prefix
+    #[arg(long)]
+    prefix: Option<String>,
 }
 
 pub struct Filter {
@@ -92,6 +96,19 @@ impl Filter {
                 return false;
             }
         }
+        if let Some(prefix) = &self.args.prefix {
+            if !entry.cmd.starts_with(prefix) {
+                return false;
+            }
+        }
         true
+    }
+
+    pub fn history_request(&self, conn: &mut Connection) -> Result<Vec<Entry>> {
+        Ok(conn
+            .history_request()?
+            .into_iter()
+            .filter(|entry| self.entry(entry))
+            .collect())
     }
 }
