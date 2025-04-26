@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     env,
     fs::{self, File},
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Write, stdin},
     path::Path,
     process::Command,
 };
@@ -40,6 +40,18 @@ const HEADER: &'static str = r#"# This file lists the commands that matched the 
 pub struct EditArgs {
     #[command(flatten)]
     filter: FilterArgs,
+
+    /// Don't ask for confirmation before applying changes
+    #[arg(short, long)]
+    force: bool,
+
+    /// Display the changes that would be made, but don't actually make them
+    #[arg(short, long)]
+    dry_run: bool,
+
+    /// Don't show the changes being made
+    #[arg(short, long)]
+    quiet: bool,
 }
 
 pub fn edit(cfg: &Config, args: EditArgs) -> Result<()> {
@@ -72,32 +84,43 @@ pub fn edit(cfg: &Config, args: EditArgs) -> Result<()> {
 
     let edited = parse_file(temp_file.path())?;
 
-    let mut modified = 0;
-    for entry in history {
-        let changed = match edited.get(&entry.id) {
-            Some(cmd) => {
-                if &entry.cmd == cmd {
-                    continue;
-                } else {
-                    cmd.as_str()
-                }
-            }
-            None => "",
-        };
-        modified += 1;
-        if changed.is_empty() {
-            debug!("Entry {} was deleted", entry.id);
-            conn.update(entry.id, "".to_string(), session.clone())?;
-            continue;
+    // make sure temp_file exists until we have read the file back in
+    drop(temp_file);
+
+    let changes = get_changes(history, edited);
+    match changes.len() {
+        0 => {
+            info!("no entries modified");
+            return Ok(());
         }
-        debug!("Entry {} changed to: {}", entry.id, changed);
-        conn.update(entry.id, changed.to_string(), session.clone())?;
+        1 => info!("1 entry modified"),
+        n => info!("{n} entries modified"),
+    };
+
+    if !args.quiet {
+        for entry in changes.iter() {
+            if &entry.cmd == "" {
+                info!("{}: <deleted>", entry.id);
+            } else {
+                info!("{}: {}", entry.id, entry.cmd);
+            }
+        }
     }
 
-    info!("{modified} entries modified");
+    if args.dry_run {
+        return Ok(());
+    }
 
-    // make sure temp_file exists to the end of the function
-    drop(temp_file);
+    if !args.force {
+        println!("Press enter to apply change, Ctrl-C to abort:");
+        let mut buf = String::with_capacity(1024);
+        stdin().read_line(&mut buf)?;
+    }
+
+    for entry in changes {
+        conn.update(entry.id, entry.cmd, session.clone())?;
+    }
+
     Ok(())
 }
 
@@ -133,4 +156,28 @@ fn parse_file<P: AsRef<Path>>(path: P) -> Result<HashMap<Uuid, String>> {
         entries.insert(id, cmd.to_string());
     }
     Ok(entries)
+}
+
+fn get_changes(history: Vec<Entry>, edited: HashMap<Uuid, String>) -> Vec<Entry> {
+    let mut changes = Vec::new();
+    for mut entry in history {
+        let changed = match edited.get(&entry.id) {
+            Some(cmd) => {
+                if &entry.cmd == cmd {
+                    continue;
+                } else {
+                    cmd.as_str()
+                }
+            }
+            None => "",
+        };
+        if changed.is_empty() {
+            debug!("Entry {} was deleted", entry.id);
+        } else {
+            debug!("Entry {} changed to: {}", entry.id, changed);
+        }
+        entry.cmd = changed.to_string();
+        changes.push(entry);
+    }
+    changes
 }
