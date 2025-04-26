@@ -3,17 +3,16 @@ use uuid::Uuid;
 
 use crate::{api::Connection, config::Config, error::Result, history::Entry, server};
 
-use super::Session;
+use super::{Filter, FilterArgs};
 
 #[derive(clap::Args, Debug)]
 pub struct MoveArgs {
+    #[command(flatten)]
+    filter: FilterArgs,
+
     /// Include the history entry ID in the output
     #[arg(short, long)]
     with_id: bool,
-
-    /// Only consider the history stored by the current session
-    #[arg(short, long)]
-    session: bool,
 
     /// Look for commands that match a given prefix
     #[arg(short, long)]
@@ -35,11 +34,11 @@ pub fn do_move(cfg: &Config, args: MoveArgs) -> Result<()> {
     debug!("move: {args:?}");
 
     let mut conn = Connection::new(cfg)?;
-    let current_session = Session::get()?;
+    let filter = Filter::new(args.filter)?;
     let history: Vec<Entry> = conn
         .history_request()?
         .into_iter()
-        .filter(|entry| !args.session || current_session.includes_entry(entry))
+        .filter(|entry| filter.includes_entry(entry))
         .filter(|entry| {
             args.prefix.is_none() || entry.cmd.starts_with(args.prefix.as_ref().unwrap())
         })
