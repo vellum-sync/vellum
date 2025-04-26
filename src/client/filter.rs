@@ -24,7 +24,7 @@ impl Filter {
         })
     }
 
-    pub fn includes_entry(&self, entry: &Entry) -> bool {
+    pub fn entry(&self, entry: &Entry) -> bool {
         !self.args.session || self.current_session.includes_entry(entry)
     }
 }

@@ -38,7 +38,7 @@ pub fn do_move(cfg: &Config, args: MoveArgs) -> Result<()> {
     let history: Vec<Entry> = conn
         .history_request()?
         .into_iter()
-        .filter(|entry| filter.includes_entry(entry))
+        .filter(|entry| filter.entry(entry))
         .filter(|entry| {
             args.prefix.is_none() || entry.cmd.starts_with(args.prefix.as_ref().unwrap())
         })

@@ -46,7 +46,7 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
     let mut history: Vec<Entry> = conn
         .history_request()?
         .into_iter()
-        .filter(|entry| filter.includes_entry(entry))
+        .filter(|entry| filter.entry(entry))
         .collect();
     let mut seen = HashSet::new();
     if args.fzf {
