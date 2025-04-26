@@ -7,7 +7,7 @@ use std::{
     process::Command,
 };
 
-use log::{debug, info};
+use log::{debug, info, warn};
 use tempfile::NamedTempFile;
 use uuid::Uuid;
 
@@ -19,6 +19,22 @@ use crate::{
 };
 
 use super::{Filter, FilterArgs, Session};
+
+const HEADER: &'static str = r#"# This file lists the commands that matched the provided options.
+#
+# Lines starting with '#' and blank lines are ignored, otherwise each line
+# consists of an ID and the command, separated by a tab. Any other lines will
+# cause an error.
+#
+# To edit an entry simply change the command, to delete an entry remove the
+# line.
+#
+# If an ID is edited then it will be ignored if it was not originally selected
+# for editing (i.e. only IDs in the file as originally written will be
+# processed, unrecognised IDs will be ignored - probably resulting in commands
+# being deleted).
+#
+"#;
 
 #[derive(clap::Args, Debug)]
 pub struct EditArgs {
@@ -32,8 +48,14 @@ pub fn edit(cfg: &Config, args: EditArgs) -> Result<()> {
     let mut conn = Connection::new(cfg)?;
     let history: Vec<Entry> = filter.history_request(&mut conn)?;
 
+    if history.is_empty() {
+        warn!("No history commands matched the provided options");
+        return Ok(());
+    }
+
     fs::create_dir_all(&cfg.cache_dir)?;
     let mut temp_file = NamedTempFile::new_in(&cfg.cache_dir)?;
+    writeln!(temp_file, "{}", HEADER)?;
     for entry in history.iter() {
         writeln!(temp_file, "{}\t{}", entry.id, entry.cmd)?;
     }
@@ -96,7 +118,7 @@ fn parse_file<P: AsRef<Path>>(path: P) -> Result<HashMap<Uuid, String>> {
     let mut entries = HashMap::new();
     for line in BufReader::new(File::open(path)?).lines() {
         let line = line?;
-        if line.starts_with("#") {
+        if line.starts_with("#") || line.is_empty() {
             continue;
         }
         let (id, cmd) = match line.split_once('\t') {
