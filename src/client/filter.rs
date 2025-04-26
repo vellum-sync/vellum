@@ -10,12 +10,12 @@ pub struct FilterArgs {
     #[arg(short, long)]
     session: bool,
 
-    /// Only include commands stored on or after this time (UTC ISO8601 timestamp)
-    #[arg(long, value_name = "DATE")]
+    /// Only include commands stored on or after this time (RFC 3339 timestamp)
+    #[arg(long, value_name = "TIMESTAMP")]
     after: Option<DateTime<Utc>>,
 
-    /// Only include commands stored before this time (UTC ISO8601 timestamp)
-    #[arg(long, value_name = "DATE")]
+    /// Only include commands stored before this time (RFC 3339 timestamp)
+    #[arg(long, value_name = "TIMESTAMP")]
     before: Option<DateTime<Utc>>,
 
     /// Only include commands stored by a specified host (can be specified
