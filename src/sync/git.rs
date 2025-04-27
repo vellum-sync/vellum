@@ -6,8 +6,9 @@ use std::{
 };
 
 use git2::{
-    Commit, Cred, CredentialType, ErrorCode, FetchOptions, FetchPrune, Index, IndexAddOption, Oid,
-    PushOptions, Rebase, RebaseOptions, RemoteCallbacks, Repository, build::RepoBuilder,
+    Buf, Commit, Cred, CredentialType, Direction, ErrorCode, FetchOptions, FetchPrune, Index,
+    IndexAddOption, Oid, PushOptions, Rebase, RebaseOptions, RemoteCallbacks, Repository,
+    build::RepoBuilder,
 };
 use humantime::format_duration;
 use log::{debug, error};
@@ -275,6 +276,40 @@ impl Git {
     fn force_push(&self) -> Result<()> {
         debug!("start force push ...");
 
+        let head_ref = self.repo.head()?;
+        let name = head_ref
+            .name()
+            .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
+
+        let mut remote = self.repo.find_remote("origin")?;
+
+        let transformed = remote
+            .refspecs()
+            .filter(|refspec| refspec.direction() == Direction::Fetch && refspec.src_matches(name))
+            .map(|refspec| -> Result<Buf> { Ok(refspec.transform(name)?) })
+            .collect::<Result<Vec<Buf>>>()?;
+
+        if transformed.len() != 1 {
+            return Err(Error::Generic(format!(
+                "got {} transformed names, expected 1",
+                transformed.len()
+            )));
+        }
+
+        let remote_ref_buf = transformed.into_iter().next().unwrap();
+        let remote_ref_name = remote_ref_buf
+            .as_str()
+            .ok_or_else(|| Error::Generic("failed to get remote_ref_name".to_string()))?;
+
+        debug!("transformed: {} -> {}", name, remote_ref_name);
+
+        let remote_ref = self.repo.find_reference(remote_ref_name)?;
+        let remote_target = remote_ref
+            .target()
+            .ok_or_else(|| Error::Generic("failed to get remote target".to_string()))?;
+
+        debug!("remote target: {}", remote_target);
+
         let cm = CredsManager::new(&self.cfg)?;
 
         let mut cbs = RemoteCallbacks::new();
@@ -290,17 +325,27 @@ impl Git {
             .update_tips(|name, old, new| {
                 debug!("update tip: name: {name} old: {old:?} new: {new:?}");
                 true
+            })
+            .push_negotiation(|updates| {
+                for update in updates {
+                    debug!(
+                        "update {:?} = {} -> {:?} = {}",
+                        update.src_refname(),
+                        update.src(),
+                        update.dst_refname(),
+                        update.dst()
+                    );
+                    if let Some(src_ref) = update.src_refname() {
+                        if src_ref == name && update.src() != remote_target {
+                            return Err(git2::Error::from_str("remote oid has changed"));
+                        }
+                    }
+                }
+                Ok(())
             });
 
         let mut opts = PushOptions::new();
         opts.remote_callbacks(cbs);
-
-        let mut remote = self.repo.find_remote("origin")?;
-
-        let head_ref = self.repo.head()?.resolve()?;
-        let name = head_ref
-            .name()
-            .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
 
         Ok(remote.push(&[name], Some(&mut opts))?)
     }
