@@ -465,7 +465,7 @@ impl Server {
         history.rewrite_all_files(&path)?;
 
         sender.send("Flatten git history and push the rewritten files ...".to_string())?;
-        sync_lock.push_changes()?;
+        sync_lock.push_changes(&self.host)?;
 
         sender.send("Unlocking git repo ...".to_string())?;
         sync_lock.unlock()?;

@@ -40,7 +40,7 @@ impl<'a> LockedSyncer for Dummy {
         Ok(self.path.clone())
     }
 
-    fn push_changes(&self) -> Result<()> {
+    fn push_changes(&self, _host: &str) -> Result<()> {
         Ok(())
     }
 

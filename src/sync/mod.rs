@@ -18,7 +18,7 @@ pub trait Syncer: fmt::Debug + Send {
 pub trait LockedSyncer: fmt::Debug {
     fn refresh(&self) -> Result<PathBuf>;
 
-    fn push_changes(&self) -> Result<()>;
+    fn push_changes(&self, host: &str) -> Result<()>;
 
     fn unlock(&self) -> Result<()>;
 }

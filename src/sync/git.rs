@@ -480,13 +480,13 @@ impl<'a> LockedSyncer for GitGuard<'a> {
         Ok(Path::new(&self.git.path).join("hosts"))
     }
 
-    fn push_changes(&self) -> Result<()> {
+    fn push_changes(&self, host: &str) -> Result<()> {
         let mut index = self.git.repo.index()?;
 
         index.add_all(["*"].iter(), IndexAddOption::FORCE, None)?;
         index.write()?;
 
-        let message = "rebuild full history".to_string();
+        let message = format!("rebuild full history from {host}");
 
         // TODO: this commit shouldn't be paying attention to the history, and
         // we want to `force-with-lease` the push with the rewritten history.
