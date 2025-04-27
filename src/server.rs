@@ -20,6 +20,7 @@ use fd_lock::RwLock;
 use fork::{Fork, daemon};
 use humantime::format_duration;
 use log::{debug, error, info};
+use rand::random_range;
 use signal_hook::{consts::TERM_SIGNALS, flag, iterator::Signals};
 use uuid::Uuid;
 
@@ -222,6 +223,12 @@ impl Server {
                 exit(1)
             }
         };
+        let offset = random_range(0..interval.num_nanoseconds().unwrap());
+        let offset = TimeDelta::nanoseconds(offset);
+        debug!(
+            "random offset is: {}",
+            format_duration(offset.to_std().unwrap())
+        );
         loop {
             let next = match Utc::now().duration_round_up(interval) {
                 Ok(n) => n,
@@ -230,8 +237,8 @@ impl Server {
                     exit(1)
                 }
             };
-            debug!("next sync is: {next}");
-            let wait = match (next - Utc::now()).to_std() {
+            debug!("next sync is: {}", next + offset);
+            let wait = match (next - Utc::now() + offset).to_std() {
                 Ok(w) => w,
                 Err(e) => {
                     error!("failed to calculate wait: {e}");
