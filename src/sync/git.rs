@@ -6,9 +6,8 @@ use std::{
 };
 
 use git2::{
-    Buf, Commit, Cred, CredentialType, Direction, ErrorCode, FetchOptions, FetchPrune, Index,
-    IndexAddOption, Oid, PushOptions, Rebase, RebaseOptions, RemoteCallbacks, Repository,
-    build::RepoBuilder,
+    Commit, Cred, CredentialType, ErrorCode, FetchOptions, FetchPrune, Index, IndexAddOption, Oid,
+    PushOptions, Rebase, RebaseOptions, RemoteCallbacks, Repository, build::RepoBuilder,
 };
 use humantime::format_duration;
 use log::{debug, error};
@@ -65,15 +64,12 @@ impl Git {
     }
 
     fn try_fetch(&self, mut locked: bool, mut changes: Option<Oid>) -> Result<(bool, Option<Oid>)> {
-        let head_ref = self.repo.head()?.resolve()?;
+        let head_ref = self.repo.head()?;
         let ref_name = head_ref
             .name()
             .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
 
-        let upstream_ref = self.repo.branch_upstream_name(ref_name)?;
-        let upstream_ref_name = upstream_ref
-            .as_str()
-            .ok_or_else(|| Error::Generic(format!("unable to get upstream_ref_name")))?;
+        let upstream_ref_name = self.get_head_upstream_ref()?;
 
         let cm = CredsManager::new(&self.cfg)?;
 
@@ -84,7 +80,7 @@ impl Git {
                 debug!(
                     "name: {name}, ref_name: {ref_name}, upstream_ref_name: {upstream_ref_name}"
                 );
-                if name == upstream_ref_name && changes.is_none() {
+                if name == &upstream_ref_name && changes.is_none() {
                     changes = Some(old.clone());
                 }
                 if name == LOCK_REF {
@@ -140,14 +136,10 @@ impl Git {
         debug!("start rebase (old: {old:?})");
 
         let head = self.repo.head()?;
-        let branch = self.repo.reference_to_annotated_commit(&head)?;
+        let upstream_ref_name = self.get_head_upstream_ref()?;
+        let upstream_ref = self.repo.find_reference(&upstream_ref_name)?;
 
-        let upstream_ref = self.repo.find_reference(
-            self.repo
-                .branch_upstream_name(branch.refname().unwrap())?
-                .as_str()
-                .unwrap(),
-        )?;
+        let branch = self.repo.reference_to_annotated_commit(&head)?;
         let upstream = match old {
             Some(old) => self.repo.find_annotated_commit(old)?,
             None => self.repo.reference_to_annotated_commit(&upstream_ref)?,
@@ -286,33 +278,7 @@ impl Git {
             .name()
             .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
 
-        let mut remote = self.repo.find_remote("origin")?;
-
-        let transformed = remote
-            .refspecs()
-            .filter(|refspec| refspec.direction() == Direction::Fetch && refspec.src_matches(name))
-            .map(|refspec| -> Result<Buf> { Ok(refspec.transform(name)?) })
-            .collect::<Result<Vec<Buf>>>()?;
-
-        if transformed.len() != 1 {
-            return Err(Error::Generic(format!(
-                "got {} transformed names, expected 1",
-                transformed.len()
-            )));
-        }
-
-        let remote_ref_buf = transformed.into_iter().next().unwrap();
-        let remote_ref_name = remote_ref_buf
-            .as_str()
-            .ok_or_else(|| Error::Generic("failed to get remote_ref_name".to_string()))?;
-
-        debug!("transformed: {} -> {}", name, remote_ref_name);
-
-        let remote_ref = self.repo.find_reference(remote_ref_name)?;
-        let remote_target = remote_ref
-            .target()
-            .ok_or_else(|| Error::Generic("failed to get remote target".to_string()))?;
-
+        let remote_target = self.get_head_upstream_target()?;
         debug!("remote target: {}", remote_target);
 
         let cm = CredsManager::new(&self.cfg)?;
@@ -353,6 +319,7 @@ impl Git {
         opts.remote_callbacks(cbs);
 
         let refspec = format!("+{name}:{name}");
+        let mut remote = self.repo.find_remote("origin")?;
 
         Ok(remote.push(&[&refspec], Some(&mut opts))?)
     }
@@ -456,6 +423,38 @@ impl Git {
 
         Ok(())
     }
+
+    fn get_head_upstream_ref(&self) -> Result<String> {
+        let head = self.repo.head()?;
+        let name = head
+            .name()
+            .ok_or_else(|| Error::Generic("failed to get HEAD".to_string()))?;
+
+        let remote_ref_name = self.repo.branch_upstream_name(name)?;
+
+        Ok(remote_ref_name
+            .as_str()
+            .ok_or_else(|| Error::Generic("failed to get remote_ref".to_string()))?
+            .to_string())
+    }
+
+    fn get_head_upstream_target(&self) -> Result<Oid> {
+        let remote_ref_name = self.get_head_upstream_ref()?;
+        let remote_ref = self.repo.find_reference(&remote_ref_name)?;
+        Ok(remote_ref
+            .target()
+            .ok_or_else(|| Error::Generic("failed to get remote target".to_string()))?)
+    }
+
+    fn unpushed_changes(&self) -> Result<usize> {
+        let upstream = self.get_head_upstream_target()?;
+
+        let mut walk = self.repo.revwalk()?;
+        walk.push_head()?;
+        walk.hide(upstream)?;
+
+        Ok(walk.count())
+    }
 }
 
 impl fmt::Debug for Git {
@@ -484,7 +483,11 @@ impl Syncer for Git {
             format!("update {host}")
         };
 
-        if let Some(_) = self.commit(&message, force)? {
+        self.commit(&message, force)?;
+
+        let changes = self.unpushed_changes()?;
+        debug!("unpushed changes: {changes}");
+        if changes > 0 || force {
             self.push()?;
         }
 
