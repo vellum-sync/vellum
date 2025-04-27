@@ -226,8 +226,8 @@ impl Git {
         match self.try_push() {
             Err(Error::Git(e)) => {
                 if e.code() == ErrorCode::NotFastForward {
-                    debug!("push failed due to NotFasForward, try rebase ...");
-                    self.rebase(None)?;
+                    debug!("push failed due to NotFasForward, try pull ...");
+                    self.pull()?;
                     self.try_push()
                 } else {
                     Err(Error::Git(e))
