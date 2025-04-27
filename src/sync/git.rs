@@ -492,8 +492,6 @@ impl Syncer for Git {
     }
 
     fn lock<'a>(&'a self) -> Result<Box<dyn LockedSyncer + 'a>> {
-        // TODO(jp3): we should be creating the lock here ...
-
         let mut index = Index::new()?;
         let oid = index.write_tree_to(&self.repo)?;
         let tree = self.repo.find_tree(oid)?;
