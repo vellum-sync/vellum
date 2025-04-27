@@ -12,10 +12,14 @@ pub trait Syncer: fmt::Debug + Send {
 
     fn push_changes(&self, host: &str, force: bool) -> Result<()>;
 
-    fn lock<'a>(&'a self) -> Result<Box<dyn SyncGuard + 'a>>;
+    fn lock<'a>(&'a self) -> Result<Box<dyn LockedSyncer + 'a>>;
 }
 
-pub trait SyncGuard: fmt::Debug {
+pub trait LockedSyncer: fmt::Debug {
+    fn refresh(&self) -> Result<PathBuf>;
+
+    fn push_changes(&self) -> Result<()>;
+
     fn unlock(&self) -> Result<()>;
 }
 

@@ -5,7 +5,7 @@ use std::{
 
 use crate::error::Result;
 
-use super::{SyncGuard, Syncer};
+use super::{LockedSyncer, Syncer};
 
 #[derive(Debug, Clone)]
 pub struct Dummy {
@@ -30,12 +30,20 @@ impl Syncer for Dummy {
         Ok(())
     }
 
-    fn lock<'a>(&'a self) -> Result<Box<dyn super::SyncGuard + 'a>> {
+    fn lock<'a>(&'a self) -> Result<Box<dyn super::LockedSyncer + 'a>> {
         Ok(Box::new(self.clone()))
     }
 }
 
-impl<'a> SyncGuard for Dummy {
+impl<'a> LockedSyncer for Dummy {
+    fn refresh(&self) -> Result<PathBuf> {
+        Ok(self.path.clone())
+    }
+
+    fn push_changes(&self) -> Result<()> {
+        Ok(())
+    }
+
     fn unlock(&self) -> Result<()> {
         Ok(())
     }

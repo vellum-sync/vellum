@@ -17,7 +17,7 @@ use crate::{
     error::{Error, Result},
 };
 
-use super::{SyncGuard, Syncer};
+use super::{LockedSyncer, Syncer};
 
 const LOCK_REF: &str = "refs/tags/lock";
 
@@ -216,6 +216,14 @@ impl Git {
         Ok(())
     }
 
+    fn locked_pull(&self) -> Result<()> {
+        let (_, changes) = self.try_fetch(false, false)?;
+        if changes {
+            self.rebase()?;
+        }
+        Ok(())
+    }
+
     fn push(&self) -> Result<()> {
         match self.try_push() {
             Err(Error::Git(e)) => {
@@ -366,7 +374,7 @@ impl Syncer for Git {
         Ok(())
     }
 
-    fn lock<'a>(&'a self) -> Result<Box<dyn SyncGuard + 'a>> {
+    fn lock<'a>(&'a self) -> Result<Box<dyn LockedSyncer + 'a>> {
         // TODO(jp3): we should be creating the lock here ...
 
         let mut index = Index::new()?;
@@ -466,7 +474,29 @@ impl<'a> GitGuard<'a> {
     }
 }
 
-impl<'a> SyncGuard for GitGuard<'a> {
+impl<'a> LockedSyncer for GitGuard<'a> {
+    fn refresh(&self) -> Result<PathBuf> {
+        self.git.locked_pull()?;
+        Ok(Path::new(&self.git.path).join("hosts"))
+    }
+
+    fn push_changes(&self) -> Result<()> {
+        let mut index = self.git.repo.index()?;
+
+        index.add_all(["*"].iter(), IndexAddOption::FORCE, None)?;
+        index.write()?;
+
+        let message = "rebuild full history".to_string();
+
+        // TODO: this commit shouldn't be paying attention to the history, and
+        // we want to `force-with-lease` the push with the rewritten history.
+        if let Some(_) = self.git.commit(&message, false)? {
+            self.git.push()?;
+        }
+
+        Ok(())
+    }
+
     fn unlock(&self) -> Result<()> {
         self.git.unlock()
     }

@@ -444,10 +444,10 @@ impl Server {
     fn rebuild(&self, sender: SyncSender<String>) -> Result<()> {
         debug!("rebuild background thread started");
 
-        sender.send("Refreshing git state".to_string())?;
+        sender.send("Refreshing git state ...".to_string())?;
         let syncer = self.syncer.lock().unwrap();
-        let path = syncer.refresh()?;
-        let history = self.history.lock().unwrap();
+        syncer.refresh()?;
+        let mut history = self.history.lock().unwrap();
 
         sender.send("Locking git repo ...".to_string())?;
         let sync_lock = syncer.lock()?;
@@ -455,8 +455,22 @@ impl Server {
         sender.send("Waiting 5s to allow in progress syncs to complete ...".to_string())?;
         thread::sleep(Duration::from_secs(5));
 
+        sender.send("Refreshing git state again ...".to_string())?;
+        let path = sync_lock.refresh()?;
+
+        sender.send("Update the history state ...".to_string())?;
+        history.sync(&path)?;
+
+        sender.send("Rewrite the history files ...".to_string())?;
+        //history.rewrite_all_files(&path)?;
+
+        sender.send("Flatten git history and push the rewritten files ...".to_string())?;
+        sync_lock.push_changes()?;
+
         sender.send("Unlocking git repo ...".to_string())?;
         sync_lock.unlock()?;
+
+        sender.send("Rebuild complete".to_string())?;
 
         // we need to drop the lock first, otherwise we can't drop syncer
         drop(sync_lock);
