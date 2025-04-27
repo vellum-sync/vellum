@@ -31,6 +31,7 @@ pub enum Error {
     UUID(uuid::Error),
     ParseInt(ParseIntError),
     ParseTime(chrono::ParseError),
+    Rounding(chrono::RoundingError),
 }
 
 impl Display for Error {
@@ -53,6 +54,7 @@ impl Display for Error {
             Self::UUID(e) => write!(f, "UUID ERROR: {e}"),
             Self::ParseInt(e) => write!(f, "PARSE INT ERROR: {e}"),
             Self::ParseTime(e) => write!(f, "PARSE TIME ERROR: {e}"),
+            Self::Rounding(e) => write!(f, "ROUNDING ERROR: {e}"),
         }
     }
 }
@@ -77,6 +79,7 @@ impl error::Error for Error {
             Self::UUID(e) => Some(e),
             Self::ParseInt(e) => Some(e),
             Self::ParseTime(e) => Some(e),
+            Self::Rounding(e) => Some(e),
         }
     }
 }
@@ -180,6 +183,12 @@ impl From<chrono::ParseError> for Error {
 impl<T: Debug> From<SendError<T>> for Error {
     fn from(value: SendError<T>) -> Self {
         Self::Generic(format!("failed to send data: {value}"))
+    }
+}
+
+impl From<chrono::RoundingError> for Error {
+    fn from(value: chrono::RoundingError) -> Self {
+        Self::Rounding(value)
     }
 }
 

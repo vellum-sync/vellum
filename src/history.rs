@@ -13,7 +13,7 @@ use aws_lc_rs::{
     rand,
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, DurationRound, TimeDelta, Utc};
 use itertools::Itertools;
 use log::debug;
 use serde::{Deserialize, Serialize};
@@ -82,6 +82,13 @@ impl Chunk {
     fn new() -> Self {
         Self {
             start: Utc::now(),
+            entries: Vec::new(),
+        }
+    }
+
+    fn with_start(start: DateTime<Utc>) -> Self {
+        Self {
+            start,
             entries: Vec::new(),
         }
     }
@@ -164,32 +171,19 @@ impl History {
     }
 
     pub fn save<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.write(path)?;
+        self.write(path, &self.host)?;
         self.last_write = Utc::now();
         Ok(())
     }
 
     pub fn sync<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.write(path.as_ref())?;
+        self.write(path.as_ref(), &self.host)?;
         self.last_write = Utc::now();
         self.read(path.as_ref())
     }
 
     pub fn history(&self) -> Vec<Entry> {
         self.merged.clone()
-    }
-
-    fn get_active_chunk(&mut self) -> &mut Chunk {
-        let chunks = self.history.entry(self.host.clone()).or_default();
-        // create a new chunk if chunks is empty, or if the most recent chunk
-        // has already been written.
-        match chunks.last() {
-            Some(last) if last.start > self.last_write => (),
-            _ => chunks.push(Chunk::new()),
-        };
-        // at this point chunks will *always* have at least one entry, so
-        // last_mut will never return None.
-        chunks.last_mut().unwrap()
     }
 
     pub fn add<C: Into<String>, S: Into<String>>(&mut self, cmd: C, session: S) {
@@ -212,6 +206,31 @@ impl History {
         self.get_active_chunk().push(entry);
         self.rebuild_merged();
         Ok(())
+    }
+
+    pub fn rewrite_all_files<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
+        self.rebuild_chunks()?;
+        fs::remove_dir_all(path.as_ref())?;
+        // since we have removed the files, reset the last_write time
+        self.last_write = DateTime::UNIX_EPOCH;
+        for (host, _) in self.history.iter() {
+            self.write(path.as_ref(), host)?;
+        }
+        self.last_write = Utc::now();
+        Ok(())
+    }
+
+    fn get_active_chunk(&mut self) -> &mut Chunk {
+        let chunks = self.history.entry(self.host.clone()).or_default();
+        // create a new chunk if chunks is empty, or if the most recent chunk
+        // has already been written.
+        match chunks.last() {
+            Some(last) if last.start > self.last_write => (),
+            _ => chunks.push(Chunk::new()),
+        };
+        // at this point chunks will *always* have at least one entry, so
+        // last_mut will never return None.
+        chunks.last_mut().unwrap()
     }
 
     fn read<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
@@ -300,11 +319,11 @@ impl History {
         Ok(added)
     }
 
-    fn write<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+    fn write<P: AsRef<Path>>(&self, path: P, host: &str) -> Result<()> {
         let key = get_key()?;
 
         // First we need to make sure that there is actually anything to write.
-        let chunks = match self.history.get(&self.host) {
+        let chunks = match self.history.get(host) {
             Some(c) => c,
             None => return Ok(()),
         };
@@ -312,7 +331,7 @@ impl History {
         debug!("We have {} total chunks", chunks.len());
 
         // make sure host directory exists
-        let dir = Path::new(path.as_ref()).join(&self.host);
+        let dir = Path::new(path.as_ref()).join(host);
         fs::create_dir_all(&dir)?;
 
         for (day, chunks) in chunks
@@ -360,6 +379,38 @@ impl History {
 
         new_merged.sort();
         self.merged = new_merged;
+    }
+
+    fn get_chunk_by_hour<'a>(
+        &self,
+        history: &'a mut HashMap<String, Vec<Chunk>>,
+        host: String,
+        ts: &DateTime<Utc>,
+    ) -> Result<&'a mut Chunk> {
+        let hour = ts.duration_trunc(TimeDelta::hours(1))?;
+        let chunks = history.entry(host).or_default();
+        // create a new chunk if chunks is empty, or if the most recent chunk
+        // has already been written.
+        match chunks.last() {
+            Some(last) if last.start == hour => (),
+            _ => chunks.push(Chunk::with_start(hour)),
+        };
+        // at this point chunks will *always* have at least one entry, so
+        // last_mut will never return None.
+        Ok(chunks.last_mut().unwrap())
+    }
+
+    fn rebuild_chunks(&mut self) -> Result<()> {
+        let mut new_history = HashMap::new();
+
+        for entry in self.merged.iter() {
+            let chunk = self.get_chunk_by_hour(&mut new_history, self.host.clone(), &entry.ts)?;
+            chunk.push(entry.clone());
+        }
+
+        self.history = new_history;
+
+        Ok(())
     }
 }
 

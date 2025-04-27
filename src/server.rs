@@ -462,7 +462,7 @@ impl Server {
         history.sync(&path)?;
 
         sender.send("Rewrite the history files ...".to_string())?;
-        //history.rewrite_all_files(&path)?;
+        history.rewrite_all_files(&path)?;
 
         sender.send("Flatten git history and push the rewritten files ...".to_string())?;
         sync_lock.push_changes()?;
