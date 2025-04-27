@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use log::debug;
 use uuid::Uuid;
 
@@ -13,6 +15,10 @@ pub struct MoveArgs {
     /// Include the history entry ID in the output
     #[arg(short, long)]
     with_id: bool,
+
+    /// Only show the most recent version of each command in the history
+    #[arg(short = 'D', long)]
+    no_duplicates: bool,
 
     /// How far to move through the history relative to the start
     distance: isize,
@@ -31,7 +37,11 @@ pub fn do_move(cfg: &Config, args: MoveArgs) -> Result<()> {
 
     let mut conn = Connection::new(cfg)?;
     let filter = Filter::new(args.filter)?;
-    let history: Vec<Entry> = filter.history_request(&mut conn)?;
+    let mut history: Vec<Entry> = filter.history_request(&mut conn)?;
+
+    if args.no_duplicates {
+        history = remove_duplicates(history);
+    }
 
     let start = match args.start {
         Some(s) if !s.is_empty() => {
@@ -65,4 +75,15 @@ pub fn do_move(cfg: &Config, args: MoveArgs) -> Result<()> {
     println!("{}", entry.cmd);
 
     Ok(())
+}
+
+fn remove_duplicates(history: Vec<Entry>) -> Vec<Entry> {
+    let mut seen = HashSet::new();
+    let mut filtered: Vec<Entry> = history
+        .into_iter()
+        .rev()
+        .filter(|entry| seen.insert(entry.cmd.clone()))
+        .collect();
+    filtered.reverse();
+    filtered
 }

@@ -22,7 +22,7 @@ else
     __vellum_search() {
         local output
         output="$(
-            vellum history --fzf | \
+            vellum history --fzf "${VELLUM_HISTORY_ARGS[@]}" | \
                 FZF_DEFAULT_OPTS=$(__fzf_defaults "" "-n2..,.. --scheme=history --bind=ctrl-r:toggle-sort --wrap-sign '"$'\t'"↳ ' --highlight-line ${FZF_CTRL_R_OPTS-} +m --read0") \
                 FZF_DEFAULTS_OPTS_FILE='' $(__fzfcmd) --query "${READLINE_LINE}"
         )" || return
@@ -40,7 +40,7 @@ else
         if [[ -z "${__VELLUM_LINE}" ]]; then
             vellum_search+=("--prefix=${READLINE_LINE}")
         fi
-        vellum_output="$(vellum move --with-id --session "${vellum_search[@]}" -- -1 "${__VELLUM_LINE}")"
+        vellum_output="$(vellum move --with-id --session "${vellum_search[@]}" "${VELLUM_MOVE_ARGS[@]}" -- -1 "${__VELLUM_LINE}")"
         __VELLUM_LINE="${vellum_output%%|*}"
         READLINE_LINE="${vellum_output#*|}"
         READLINE_POINT="${#READLINE_LINE}"
@@ -52,7 +52,7 @@ else
         if [[ -z "${__VELLUM_LINE}" ]]; then
             vellum_search+=("--prefix=${READLINE_LINE}")
         fi
-        vellum_output="$(vellum move --with-id --session "${vellum_search[@]}" -- 1 "${__VELLUM_LINE}")"
+        vellum_output="$(vellum move --with-id --session "${vellum_search[@]}" "${VELLUM_MOVE_ARGS[@]}" -- 1 "${__VELLUM_LINE}")"
         __VELLUM_LINE="${vellum_output%%|*}"
         READLINE_LINE="${vellum_output#*|}"
         READLINE_POINT="${#READLINE_LINE}"
