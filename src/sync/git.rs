@@ -272,6 +272,39 @@ impl Git {
         Ok(remote.push(&[name], Some(&mut opts))?)
     }
 
+    fn force_push(&self) -> Result<()> {
+        debug!("start force push ...");
+
+        let cm = CredsManager::new(&self.cfg)?;
+
+        let mut cbs = RemoteCallbacks::new();
+        cbs.credentials(|url, username, types| cm.lookup(url, username, types))
+            .push_update_reference(|name, status| {
+                debug!("update reference: name: {name} status: {status:?}");
+                if let Some(msg) = status {
+                    Err(git2::Error::from_str(msg))
+                } else {
+                    Ok(())
+                }
+            })
+            .update_tips(|name, old, new| {
+                debug!("update tip: name: {name} old: {old:?} new: {new:?}");
+                true
+            });
+
+        let mut opts = PushOptions::new();
+        opts.remote_callbacks(cbs);
+
+        let mut remote = self.repo.find_remote("origin")?;
+
+        let head_ref = self.repo.head()?.resolve()?;
+        let name = head_ref
+            .name()
+            .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
+
+        Ok(remote.push(&[name], Some(&mut opts))?)
+    }
+
     fn tip(&self) -> Result<Option<Commit>> {
         let oid = match self.repo.head() {
             Ok(head) => head.target(),
@@ -308,6 +341,38 @@ impl Git {
             .commit(Some("HEAD"), &author, &author, message, &tree, &parents)?;
         debug!("Created commit {commit:?}");
         Ok(Some(commit))
+    }
+
+    fn commit_no_parent(&self, message: &str) -> Result<Oid> {
+        let mut index = self.repo.index()?;
+        let tree = self.repo.find_tree(index.write_tree()?)?;
+        let author = self.repo.signature()?;
+        let commit = self
+            .repo
+            .commit(None, &author, &author, message, &tree, &[])?;
+
+        debug!("Created commit {commit:?}");
+
+        let head_ref = self.repo.head()?;
+        let ref_name = head_ref
+            .name()
+            .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
+
+        let ref_msg = "rebuild history";
+
+        let new_ref = match head_ref.target() {
+            Some(current) => self
+                .repo
+                .reference_matching(ref_name, commit, true, current, ref_msg)?,
+            None => self.repo.reference(ref_name, commit, true, ref_msg)?,
+        };
+        debug!(
+            "updated reference: {:?} -> {:?}",
+            new_ref.name(),
+            new_ref.target()
+        );
+
+        Ok(commit)
     }
 
     fn unlock(&self) -> Result<()> {
@@ -488,11 +553,8 @@ impl<'a> LockedSyncer for GitGuard<'a> {
 
         let message = format!("rebuild full history from {host}");
 
-        // TODO: this commit shouldn't be paying attention to the history, and
-        // we want to `force-with-lease` the push with the rewritten history.
-        if let Some(_) = self.git.commit(&message, false)? {
-            self.git.push()?;
-        }
+        self.git.commit_no_parent(&message)?;
+        self.git.force_push()?;
 
         Ok(())
     }
