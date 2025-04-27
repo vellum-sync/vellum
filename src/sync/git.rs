@@ -347,7 +347,9 @@ impl Git {
         let mut opts = PushOptions::new();
         opts.remote_callbacks(cbs);
 
-        Ok(remote.push(&[name], Some(&mut opts))?)
+        let refspec = format!("+{name}:{name}");
+
+        Ok(remote.push(&[&refspec], Some(&mut opts))?)
     }
 
     fn tip(&self) -> Result<Option<Commit>> {
