@@ -64,7 +64,7 @@ impl Git {
         })
     }
 
-    fn try_fetch(&self, mut locked: bool, mut changes: bool) -> Result<(bool, bool)> {
+    fn try_fetch(&self, mut locked: bool, mut changes: Option<Oid>) -> Result<(bool, Option<Oid>)> {
         let head_ref = self.repo.head()?.resolve()?;
         let ref_name = head_ref
             .name()
@@ -84,8 +84,8 @@ impl Git {
                 debug!(
                     "name: {name}, ref_name: {ref_name}, upstream_ref_name: {upstream_ref_name}"
                 );
-                if name == upstream_ref_name {
-                    changes = true;
+                if name == upstream_ref_name && changes.is_none() {
+                    changes = Some(old.clone());
                 }
                 if name == LOCK_REF {
                     locked = !new.is_zero();
@@ -112,10 +112,10 @@ impl Git {
         Ok((locked, changes))
     }
 
-    fn fetch(&self) -> Result<bool> {
+    fn fetch(&self) -> Result<Option<Oid>> {
         debug!("start fetch ...");
 
-        let (mut locked, mut changes) = self.try_fetch(false, false)?;
+        let (mut locked, mut changes) = self.try_fetch(false, None)?;
 
         let start = Instant::now();
         while locked && start.elapsed() < MAX_LOCK_WAIT {
@@ -131,12 +131,14 @@ impl Git {
             )));
         }
 
-        debug!("fetch has changes: {changes}");
+        debug!("fetch has changes: {changes:?}");
 
         Ok(changes)
     }
 
-    fn rebase(&self) -> Result<()> {
+    fn rebase(&self, old: Option<Oid>) -> Result<()> {
+        debug!("start rebase (old: {old:?})");
+
         let head = self.repo.head()?;
         let branch = self.repo.reference_to_annotated_commit(&head)?;
 
@@ -146,20 +148,24 @@ impl Git {
                 .as_str()
                 .unwrap(),
         )?;
-        let upstream = self.repo.reference_to_annotated_commit(&upstream_ref)?;
+        let upstream = match old {
+            Some(old) => self.repo.find_annotated_commit(old)?,
+            None => self.repo.reference_to_annotated_commit(&upstream_ref)?,
+        };
+        let onto = self.repo.reference_to_annotated_commit(&upstream_ref)?;
 
         debug!(
-            "start rebase of {:?} upstream {:?}",
+            "start rebase of {:?} onto {:?}",
             branch.refname(),
-            upstream.refname()
+            onto.refname()
         );
 
         let mut opts = RebaseOptions::new();
         opts.inmemory(false);
 
-        let mut rebase = self
-            .repo
-            .rebase(Some(&branch), Some(&upstream), None, Some(&mut opts))?;
+        let mut rebase =
+            self.repo
+                .rebase(Some(&branch), Some(&upstream), Some(&onto), Some(&mut opts))?;
 
         if let Err(e) = self.run_rebase(&mut rebase) {
             debug!("rebase failed");
@@ -211,16 +217,15 @@ impl Git {
     }
 
     fn pull(&self) -> Result<()> {
-        if self.fetch()? {
-            self.rebase()?;
+        if let Some(old) = self.fetch()? {
+            self.rebase(Some(old))?;
         }
         Ok(())
     }
 
     fn locked_pull(&self) -> Result<()> {
-        let (_, changes) = self.try_fetch(false, false)?;
-        if changes {
-            self.rebase()?;
+        if let (_, Some(old)) = self.try_fetch(false, None)? {
+            self.rebase(Some(old))?;
         }
         Ok(())
     }
@@ -230,7 +235,7 @@ impl Git {
             Err(Error::Git(e)) => {
                 if e.code() == ErrorCode::NotFastForward {
                     debug!("push failed due to NotFasForward, try rebase ...");
-                    self.rebase()?;
+                    self.rebase(None)?;
                     self.try_push()
                 } else {
                     Err(Error::Git(e))
