@@ -404,7 +404,7 @@ impl History {
         let mut new_history = HashMap::new();
 
         for entry in self.merged.iter() {
-            let chunk = self.get_chunk_by_hour(&mut new_history, self.host.clone(), &entry.ts)?;
+            let chunk = self.get_chunk_by_hour(&mut new_history, entry.host.clone(), &entry.ts)?;
             chunk.push(entry.clone());
         }
 
