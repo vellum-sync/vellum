@@ -30,7 +30,7 @@ pub struct Git {
 }
 
 impl Git {
-    pub fn existing(cfg: &Config) -> Result<Self> {
+    fn existing(cfg: &Config) -> Result<Self> {
         let path = cfg.sync_path();
         let repo = Repository::open(&path)?;
         fs::create_dir_all(Path::new(&path).join("hosts"))?;
@@ -41,7 +41,7 @@ impl Git {
         })
     }
 
-    pub fn new(cfg: &Config) -> Result<Self> {
+    fn clone(cfg: &Config) -> Result<Self> {
         let cm = CredsManager::new(cfg)?;
 
         let mut cbs = RemoteCallbacks::new();
@@ -61,6 +61,14 @@ impl Git {
             cfg: cfg.clone(),
             repo,
         })
+    }
+
+    pub fn new(cfg: &Config) -> Result<Self> {
+        if fs::exists(cfg.sync_path())? {
+            Self::existing(cfg)
+        } else {
+            Self::clone(cfg)
+        }
     }
 
     fn try_fetch(&self, mut locked: bool, mut changes: Option<Oid>) -> Result<(bool, Option<Oid>)> {

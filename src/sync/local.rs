@@ -8,11 +8,11 @@ use crate::error::Result;
 use super::{LockedSyncer, Syncer};
 
 #[derive(Debug, Clone)]
-pub struct Dummy {
+pub struct Local {
     path: PathBuf,
 }
 
-impl Dummy {
+impl Local {
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
         fs::create_dir_all(path.as_ref())?;
         Ok(Self {
@@ -21,7 +21,7 @@ impl Dummy {
     }
 }
 
-impl Syncer for Dummy {
+impl Syncer for Local {
     fn refresh(&self) -> Result<PathBuf> {
         Ok(self.path.clone())
     }
@@ -35,7 +35,7 @@ impl Syncer for Dummy {
     }
 }
 
-impl<'a> LockedSyncer for Dummy {
+impl<'a> LockedSyncer for Local {
     fn refresh(&self) -> Result<PathBuf> {
         Ok(self.path.clone())
     }
