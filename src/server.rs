@@ -40,6 +40,11 @@ pub struct Args {
     #[arg(short, long)]
     foreground: bool,
 
+    /// Ensure that the server is running, i.e. only start the server if not
+    /// already running.
+    #[arg(short, long)]
+    ensure: bool,
+
     /// Wait for the server to start
     #[arg(short, long)]
     wait: bool,
@@ -67,6 +72,10 @@ pub fn run(config: &Config, args: Args) -> Result<()> {
     }
 
     if !args.force && server_is_running(config)? {
+        if args.ensure {
+            debug!("Server is already running.");
+            return Ok(());
+        }
         error!("Server is already running!");
         exit(1);
     }

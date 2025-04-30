@@ -3,16 +3,19 @@ use std::{
     path::Path,
 };
 
+use log::debug;
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 
 use crate::{config::Config, error::Result};
 
 pub fn server_is_running(cfg: &Config) -> Result<bool> {
     let pid_file = Path::new(&cfg.state_dir).join("server.pid");
+    debug!("Check server pid file: {pid_file:?}");
     if !exists(&pid_file)? {
         return Ok(false);
     }
     let raw_pid = read_pid_file(pid_file)?;
+    debug!("Got server pid: {raw_pid}");
     if raw_pid == 0 {
         return Ok(false);
     }
