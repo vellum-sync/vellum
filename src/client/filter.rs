@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
+use clap::ValueHint;
 
 use crate::{api::Connection, error::Result, history::Entry};
 
@@ -13,28 +14,28 @@ pub struct FilterArgs {
     session: bool,
 
     /// Only include commands stored on or after this time (RFC 3339 timestamp)
-    #[arg(long, value_name = "TIMESTAMP")]
+    #[arg(long, value_name = "TIMESTAMP", value_hint = ValueHint::Other)]
     after: Option<DateTime<Utc>>,
 
     /// Only include commands stored before this time (RFC 3339 timestamp)
-    #[arg(long, value_name = "TIMESTAMP")]
+    #[arg(long, value_name = "TIMESTAMP", value_hint = ValueHint::Other)]
     before: Option<DateTime<Utc>>,
 
     /// Only include commands stored by a specified host (can be specified
     /// multiple times)
-    #[arg(long)]
+    #[arg(long, value_hint = ValueHint::Hostname)]
     host: Option<Vec<String>>,
 
     /// Only include commands that were stored more than the given duration ago
-    #[arg(long, value_parser = humantime::parse_duration, value_name = "DURATION")]
+    #[arg(long, value_parser = humantime::parse_duration, value_name = "DURATION", value_hint = ValueHint::Other)]
     min_age: Option<Duration>,
 
     /// Only include commands that were stored within the specified duration
-    #[arg(long, value_parser = humantime::parse_duration, value_name = "DURATION")]
+    #[arg(long, value_parser = humantime::parse_duration, value_name = "DURATION", value_hint = ValueHint::Other)]
     max_age: Option<Duration>,
 
     /// Only include commands that match the given prefix
-    #[arg(long)]
+    #[arg(long, value_hint = ValueHint::Other)]
     prefix: Option<String>,
 }
 

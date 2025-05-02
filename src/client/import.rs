@@ -3,6 +3,8 @@ use std::{
     io::{BufRead, BufReader, stdin},
 };
 
+use clap::ValueHint;
+
 use crate::{api::Connection, config::Config, error::Result, server};
 
 use super::Session;
@@ -10,7 +12,7 @@ use super::Session;
 #[derive(clap::Args, Debug)]
 pub struct ImportArgs {
     /// Read from a file rather than stdin
-    #[arg(short, long)]
+    #[arg(short, long, value_hint = ValueHint::FilePath)]
     file: Option<String>,
 
     /// Import into the current session, rather than marking as imported

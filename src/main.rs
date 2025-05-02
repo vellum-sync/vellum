@@ -1,12 +1,13 @@
 use std::{env, fs, io, path::Path, process::exit};
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueHint};
 use env_logger::{Env, Target};
 use log::error;
 
 mod api;
 mod assets;
 mod client;
+mod complete;
 mod config;
 mod error;
 mod history;
@@ -62,7 +63,7 @@ enum Commands {
     /// to rebuild the on-disk data.
     Delete {
         /// IDs of entries to be marked as deleted
-        #[arg(required = true)]
+        #[arg(required = true, value_hint = ValueHint::Other)]
         ids: Vec<String>,
     },
 
@@ -74,6 +75,9 @@ enum Commands {
 
     /// Commands to setup/initialise vellum
     Init(init::Args),
+
+    /// Generate shell completion file
+    Complete(complete::Args),
 
     /// Ping the server
     Ping {
@@ -146,6 +150,7 @@ fn main() {
         Commands::Import(args) => client::import(&config, args),
         Commands::Config => config.show(),
         Commands::Init(args) => init::init(args),
+        Commands::Complete(args) => complete::complete(args, Cli::command()),
         Commands::Ping { wait } => client::ping(&config, wait),
         Commands::Sync { force } => client::sync(&config, force),
         Commands::Rebuild => client::rebuild(&config),

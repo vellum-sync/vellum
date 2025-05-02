@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use clap::ValueHint;
 use log::debug;
 use uuid::Uuid;
 
@@ -21,12 +22,14 @@ pub struct MoveArgs {
     no_duplicates: bool,
 
     /// How far to move through the history relative to the start
+    #[clap(value_hint = ValueHint::Other)]
     distance: isize,
 
     /// An ID of a historical command from which to start the movement in the
     /// history. By default movement will start from after the most recent
     /// command (i.e. by default a distance of -1 will move back to the most
     /// recent command).
+    #[clap(value_hint = ValueHint::Other)]
     start: Option<String>,
 }
 
