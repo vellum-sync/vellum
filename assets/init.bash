@@ -15,9 +15,13 @@ else
 
     __vellum_preexec() {
         vellum store -- "$1"
-        __VELLUM_LINE=""
     }
     preexec_functions+=(__vellum_preexec)
+
+    __vellum_precmd() {
+        __VELLUM_LINE=""
+    }
+    precmd_functions+=(__vellum_precmd)
 
     __vellum_search() {
         local output
