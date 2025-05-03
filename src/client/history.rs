@@ -1,6 +1,14 @@
 use std::{cmp, collections::HashSet};
 
-use crate::{api::Connection, config::Config, error::Result, history::Entry, server};
+use log::debug;
+
+use crate::{
+    api::Connection,
+    config::Config,
+    error::{Error, Result},
+    history::Entry,
+    server,
+};
 
 use super::{Filter, FilterArgs};
 
@@ -37,6 +45,14 @@ pub struct HistoryArgs {
     /// Format the output in the way expected by fzf
     #[arg(long)]
     fzf: bool,
+
+    /// The first entry in the history to show, negative values count back from
+    /// the end.
+    first: Option<isize>,
+
+    /// The last entry in the history to show, negative values count back from
+    /// the end. It has to be after the start point.
+    last: Option<isize>,
 }
 
 pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
@@ -87,7 +103,26 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
         if !args.reverse {
             filtered.reverse();
         }
+        let first = match get_index("FIRST", args.first, filtered.len())? {
+            Some(f) => f,
+            None => 0,
+        };
+        let last = match get_index("LAST", args.last, filtered.len())? {
+            Some(l) => l,
+            None => filtered.len() - 1,
+        };
+        debug!("show history from {first} to {last}");
+        if filtered.len() > 0 && last < first {
+            return Err(Error::Generic(format!(
+                "LAST ({}) must not be before FIRST ({})",
+                args.last.unwrap(),
+                args.first.unwrap()
+            )));
+        }
         for (index, entry) in filtered {
+            if index < first || index > last {
+                continue;
+            }
             if args.verbose {
                 if args.id {
                     println!(
@@ -114,4 +149,16 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn get_index(label: &str, idx: Option<isize>, max: usize) -> Result<Option<usize>> {
+    match idx {
+        Some(n) if n < 0 && (((-n) as usize) <= max) => Ok(Some((max as isize + n) as usize)),
+        Some(n) if n > 0 && ((n as usize) <= max) => Ok(Some((n - 1) as usize)),
+        Some(n) if n == 0 => Err(Error::Generic(format!("0 is not a valid {label} value"))),
+        Some(n) => Err(Error::Generic(format!(
+            "Can't use {label} of {n} with {max} entries",
+        ))),
+        None => Ok(None),
+    }
 }
