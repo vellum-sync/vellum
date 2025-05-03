@@ -38,7 +38,7 @@ impl Connection {
     }
 
     fn read_message(&mut self) -> result::Result<Vec<u8>, io::Error> {
-        let mut buf = [0 as u8; 8];
+        let mut buf = [0_u8; 8];
         self.s.read_exact(&mut buf)?;
         let len = u64::from_le_bytes(buf);
 
@@ -140,7 +140,7 @@ impl Connection {
         }
     }
 
-    pub fn rebuild<'a>(&'a mut self) -> Result<Rebuilder<'a>> {
+    pub fn rebuild(&mut self) -> Result<Rebuilder<'_>> {
         let msg = Message::Rebuild;
         self.send(&msg)?;
         Ok(Rebuilder::new(self))
@@ -192,7 +192,7 @@ pub struct Incoming<'a> {
     i: net::Incoming<'a>,
 }
 
-impl<'a> Iterator for Incoming<'a> {
+impl Iterator for Incoming<'_> {
     type Item = Result<Connection>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -218,7 +218,7 @@ impl<'a> Rebuilder<'a> {
     }
 }
 
-impl<'a> Iterator for Rebuilder<'a> {
+impl Iterator for Rebuilder<'_> {
     type Item = Result<String>;
 
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
@@ -229,7 +229,7 @@ impl<'a> Iterator for Rebuilder<'a> {
             Ok(Some(msg)) => msg,
             Ok(None) => {
                 self.complete = true;
-                return Some(Err(Error::Generic(format!("server disconnected!"))));
+                return Some(Err(Error::from_str("server disconnected!")));
             }
             Err(e) => {
                 self.complete = true;

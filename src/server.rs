@@ -107,7 +107,13 @@ fn start(config: &Config) -> Result<()> {
     // previously written works correctly.
     debug!("create pid file");
     let pid_file = Path::new(&config.state_dir).join("server.pid");
-    let mut f = RwLock::new(File::options().create(true).write(true).open(pid_file)?);
+    let mut f = RwLock::new(
+        File::options()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(pid_file)?,
+    );
     let mut pid_lock = f.try_write()?;
     pid_lock.set_len(0)?;
     write!(pid_lock, "{}", pid)?;
@@ -291,7 +297,7 @@ impl Server {
         let mut signals = Signals::new(TERM_SIGNALS)?;
         let server = self.clone();
         thread::spawn(move || {
-            for signal in signals.forever() {
+            if let Some(signal) = signals.forever().next() {
                 info!("Received signal: {signal}");
                 // run a sync before exiting, so that we don't loose any state.
                 if let Err(e) = server.sync_local(false) {

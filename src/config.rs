@@ -4,7 +4,6 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
-use toml;
 use xdg::BaseDirectories;
 
 pub type Result = crate::error::Result<Config>;

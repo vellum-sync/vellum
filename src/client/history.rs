@@ -103,16 +103,10 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
         if !args.reverse {
             filtered.reverse();
         }
-        let first = match get_index("FIRST", args.first, filtered.len())? {
-            Some(f) => f,
-            None => 0,
-        };
-        let last = match get_index("LAST", args.last, filtered.len())? {
-            Some(l) => l,
-            None => filtered.len() - 1,
-        };
+        let first = get_index("FIRST", args.first, filtered.len())?.unwrap_or(0);
+        let last = get_index("LAST", args.last, filtered.len())?.unwrap_or(filtered.len() - 1);
         debug!("show history from {first} to {last}");
-        if filtered.len() > 0 && last < first {
+        if !filtered.is_empty() && last < first {
             return Err(Error::Generic(format!(
                 "LAST ({}) must not be before FIRST ({})",
                 args.last.unwrap(),
@@ -153,9 +147,9 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
 
 fn get_index(label: &str, idx: Option<isize>, max: usize) -> Result<Option<usize>> {
     match idx {
+        Some(0) => Err(Error::Generic(format!("0 is not a valid {label} value"))),
         Some(n) if n < 0 && (((-n) as usize) <= max) => Ok(Some((max as isize + n) as usize)),
         Some(n) if n > 0 && ((n as usize) <= max) => Ok(Some((n - 1) as usize)),
-        Some(n) if n == 0 => Err(Error::Generic(format!("0 is not a valid {label} value"))),
         Some(n) => Err(Error::Generic(format!(
             "Can't use {label} of {n} with {max} entries",
         ))),

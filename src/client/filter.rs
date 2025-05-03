@@ -54,14 +54,9 @@ pub struct Filter {
 impl Filter {
     pub fn new(args: FilterArgs) -> Result<Self> {
         let current_session = Session::get()?;
-        let min_age = match args.min_age {
-            Some(d) => Some(Utc::now() - d),
-            None => None,
-        };
-        let max_age = match args.max_age {
-            Some(d) => Some(Utc::now() - d),
-            None => None,
-        };
+        let now = Utc::now();
+        let min_age = args.min_age.map(|d| now - d);
+        let max_age = args.max_age.map(|d| now - d);
         Ok(Self {
             args,
             min_age,
@@ -71,10 +66,8 @@ impl Filter {
     }
 
     pub fn entry(&self, entry: &Entry) -> bool {
-        if self.args.session {
-            if !self.current_session.includes_entry(entry) {
-                return false;
-            }
+        if self.args.session && !self.current_session.includes_entry(entry) {
+            return false;
         }
         if let Some(after) = self.args.after {
             if entry.ts < after {

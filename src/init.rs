@@ -1,7 +1,6 @@
 use std::io::{Write, stdout};
 
 use chrono::Utc;
-use clap;
 use log::debug;
 use uuid::Uuid;
 
@@ -20,10 +19,10 @@ pub struct Args {
 #[derive(Debug, clap::Subcommand)]
 enum Commands {
     /// Output a setup script for bash
-    BASH,
+    Bash,
 
     /// Output a setup script for zsh
-    ZSH,
+    Zsh,
 
     /// Output an encryption key, suitable for use as $VELLUM_KEY
     Key,
@@ -37,8 +36,8 @@ enum Commands {
 
 pub fn init(args: Args) -> Result<()> {
     match args.command {
-        Commands::BASH => show_bash(),
-        Commands::ZSH => show_zsh(),
+        Commands::Bash => show_bash(),
+        Commands::Zsh => show_zsh(),
         Commands::Key => show_key(),
         Commands::Session => show_session(),
         Commands::Timestamp => show_timestamp(),

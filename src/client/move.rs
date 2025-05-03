@@ -52,7 +52,7 @@ pub fn do_move(cfg: &Config, args: MoveArgs) -> Result<()> {
             history
                 .iter()
                 .position(|entry| entry.id == id)
-                .unwrap_or_else(|| history.len())
+                .unwrap_or(history.len())
         }
         _ => history.len(),
     };
@@ -67,7 +67,7 @@ pub fn do_move(cfg: &Config, args: MoveArgs) -> Result<()> {
     );
 
     if want >= history.len() {
-        println!("");
+        println!();
         return Ok(());
     }
 

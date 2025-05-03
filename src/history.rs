@@ -111,7 +111,7 @@ impl EncryptedChunk {
         let mut data = rmp_serde::to_vec(&chunk.entries)?;
         let nonce = key.seal_in_place_append_tag(Aad::empty(), &mut data)?;
         Ok(Self {
-            start: chunk.start.clone(),
+            start: chunk.start,
             nonce: nonce.as_ref().into(),
             data,
         })
@@ -129,9 +129,9 @@ impl EncryptedChunk {
 }
 
 pub fn generate_key() -> Result<String> {
-    let mut buf = [0 as u8; AES_256_KEY_LEN];
+    let mut buf = [0_u8; AES_256_KEY_LEN];
     rand::fill(&mut buf)?;
-    Ok(BASE64_STANDARD.encode(&buf))
+    Ok(BASE64_STANDARD.encode(buf))
 }
 
 pub fn get_key() -> Result<Vec<u8>> {
@@ -199,7 +199,7 @@ impl History {
         session: S,
     ) -> Result<()> {
         let id = id.into();
-        if self.merged.iter().find(|entry| entry.id == id).is_none() {
+        if !self.merged.iter().any(|entry| entry.id == id) {
             return Err(Error::Generic(format!("unknown ID: {id}")));
         }
         let entry = Entry::existing(id, &self.host, cmd, session);
@@ -266,7 +266,7 @@ impl History {
         };
         match chunks.iter().last() {
             Some(c) => c.start,
-            None => return epoch,
+            None => epoch,
         }
     }
 
@@ -362,18 +362,16 @@ impl History {
 
         for (_, chunks) in self.history.iter() {
             for chunk in chunks {
-                chunk.entries.iter().for_each(|entry| {
-                    entries
-                        .entry(entry.id.clone())
-                        .or_default()
-                        .push(entry.clone())
-                });
+                chunk
+                    .entries
+                    .iter()
+                    .for_each(|entry| entries.entry(entry.id).or_default().push(entry.clone()));
             }
         }
 
         let mut new_merged: Vec<Entry> = entries
-            .into_iter()
-            .map(|(_, entry)| collapse_entries(entry))
+            .into_values()
+            .map(collapse_entries)
             .filter(|entry| !entry.cmd.is_empty())
             .collect();
 
@@ -422,7 +420,7 @@ fn collapse_entries(entries: Vec<Entry>) -> Entry {
     // we know that we must have at least two entries, so we just unwrap the
     // Options.
     let mut first = entries.next().unwrap();
-    let last = entries.last().unwrap();
+    let last = entries.next_back().unwrap();
     first.cmd = last.cmd;
     first
 }
@@ -441,7 +439,7 @@ impl HistoryFile {
     }
 
     fn read(&mut self) -> Result<Option<EncryptedChunk>> {
-        let mut buf = [0 as u8; 8];
+        let mut buf = [0_u8; 8];
         let mut read = 0;
 
         while read < buf.len() {

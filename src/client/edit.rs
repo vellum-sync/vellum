@@ -21,7 +21,7 @@ use crate::{
 
 use super::{Filter, FilterArgs, Session};
 
-const HEADER: &'static str = r#"# This file lists the commands that matched the provided options.
+const HEADER: &str = r#"# This file lists the commands that matched the provided options.
 #
 # Lines starting with '#' and blank lines are ignored, otherwise each line
 # consists of an ID and the command, separated by a tab. Any other lines will
@@ -199,7 +199,7 @@ fn get_changes(history: Vec<Entry>, edited: HashMap<Uuid, String>) -> Vec<Entry>
 
 fn show_changes(changes: &[Entry]) {
     for entry in changes {
-        if &entry.cmd == "" {
+        if entry.cmd.is_empty() {
             info!("{}: <deleted>", entry.id);
         } else {
             info!("{}: {}", entry.id, entry.cmd);

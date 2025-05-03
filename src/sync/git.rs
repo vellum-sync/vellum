@@ -75,7 +75,7 @@ impl Git {
         let head_ref = self.repo.head()?;
         let ref_name = head_ref
             .name()
-            .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
+            .ok_or_else(|| Error::from_str("unable to resolve HEAD"))?;
 
         let upstream_ref_name = self.get_head_upstream_ref()?;
 
@@ -88,8 +88,8 @@ impl Git {
                 debug!(
                     "name: {name}, ref_name: {ref_name}, upstream_ref_name: {upstream_ref_name}"
                 );
-                if name == &upstream_ref_name && changes.is_none() {
-                    changes = Some(old.clone());
+                if name == upstream_ref_name && changes.is_none() {
+                    changes = Some(old);
                 }
                 if name == LOCK_REF {
                     locked = !new.is_zero();
@@ -273,7 +273,7 @@ impl Git {
         let head_ref = self.repo.head()?.resolve()?;
         let name = head_ref
             .name()
-            .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
+            .ok_or_else(|| Error::from_str("unable to resolve HEAD"))?;
 
         Ok(remote.push(&[name], Some(&mut opts))?)
     }
@@ -284,7 +284,7 @@ impl Git {
         let head_ref = self.repo.head()?;
         let name = head_ref
             .name()
-            .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
+            .ok_or_else(|| Error::from_str("unable to resolve HEAD"))?;
 
         let remote_target = self.get_head_upstream_target()?;
         debug!("remote target: {}", remote_target);
@@ -383,7 +383,7 @@ impl Git {
         let head_ref = self.repo.head()?;
         let ref_name = head_ref
             .name()
-            .ok_or_else(|| Error::Generic(format!("unable to resolve HEAD")))?;
+            .ok_or_else(|| Error::from_str("unable to resolve HEAD"))?;
 
         let ref_msg = "rebuild history";
 
@@ -449,9 +449,9 @@ impl Git {
     fn get_head_upstream_target(&self) -> Result<Oid> {
         let remote_ref_name = self.get_head_upstream_ref()?;
         let remote_ref = self.repo.find_reference(&remote_ref_name)?;
-        Ok(remote_ref
+        remote_ref
             .target()
-            .ok_or_else(|| Error::Generic("failed to get remote target".to_string()))?)
+            .ok_or_else(|| Error::Generic("failed to get remote target".to_string()))
     }
 
     fn unpushed_changes(&self) -> Result<usize> {
@@ -600,7 +600,7 @@ impl<'a> GitGuard<'a> {
     }
 }
 
-impl<'a> LockedSyncer for GitGuard<'a> {
+impl LockedSyncer for GitGuard<'_> {
     fn refresh(&self) -> Result<PathBuf> {
         self.git.locked_pull()?;
         Ok(Path::new(&self.git.path).join("hosts"))

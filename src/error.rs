@@ -28,10 +28,16 @@ pub enum Error {
     Git(git2::Error),
     Base64(DecodeError),
     EnvVar(VarError),
-    UUID(uuid::Error),
+    Uuid(uuid::Error),
     ParseInt(ParseIntError),
     ParseTime(chrono::ParseError),
     Rounding(chrono::RoundingError),
+}
+
+impl Error {
+    pub fn from_str(s: &str) -> Self {
+        Self::Generic(s.to_string())
+    }
 }
 
 impl Display for Error {
@@ -51,7 +57,7 @@ impl Display for Error {
             Self::Git(e) => write!(f, "GIT ERROR: {e}"),
             Self::Base64(e) => write!(f, "BASE64 DECODE ERROR: {e}"),
             Self::EnvVar(e) => write!(f, "ENVIRONMENT VARIABLE ERROR: {e}"),
-            Self::UUID(e) => write!(f, "UUID ERROR: {e}"),
+            Self::Uuid(e) => write!(f, "UUID ERROR: {e}"),
             Self::ParseInt(e) => write!(f, "PARSE INT ERROR: {e}"),
             Self::ParseTime(e) => write!(f, "PARSE TIME ERROR: {e}"),
             Self::Rounding(e) => write!(f, "ROUNDING ERROR: {e}"),
@@ -76,7 +82,7 @@ impl error::Error for Error {
             Self::Git(e) => Some(e),
             Self::Base64(e) => Some(e),
             Self::EnvVar(e) => Some(e),
-            Self::UUID(e) => Some(e),
+            Self::Uuid(e) => Some(e),
             Self::ParseInt(e) => Some(e),
             Self::ParseTime(e) => Some(e),
             Self::Rounding(e) => Some(e),
@@ -164,7 +170,7 @@ impl From<VarError> for Error {
 
 impl From<uuid::Error> for Error {
     fn from(value: uuid::Error) -> Self {
-        Self::UUID(value)
+        Self::Uuid(value)
     }
 }
 

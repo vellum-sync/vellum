@@ -35,7 +35,7 @@ impl Syncer for Local {
     }
 }
 
-impl<'a> LockedSyncer for Local {
+impl LockedSyncer for Local {
     fn refresh(&self) -> Result<PathBuf> {
         Ok(self.path.clone())
     }
