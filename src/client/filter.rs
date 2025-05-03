@@ -37,6 +37,10 @@ pub struct FilterArgs {
     /// Only include commands that match the given prefix
     #[arg(long, value_hint = ValueHint::Other)]
     prefix: Option<String>,
+
+    /// Only include commands that include the given string
+    #[arg(long, value_hint = ValueHint::Other)]
+    search: Option<String>,
 }
 
 pub struct Filter {
@@ -99,6 +103,11 @@ impl Filter {
         }
         if let Some(prefix) = &self.args.prefix {
             if !entry.cmd.starts_with(prefix) {
+                return false;
+            }
+        }
+        if let Some(search) = &self.args.search {
+            if !entry.cmd.contains(search) {
                 return false;
             }
         }
