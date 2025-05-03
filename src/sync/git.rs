@@ -436,13 +436,13 @@ impl Git {
         let head = self.repo.head()?;
         let name = head
             .name()
-            .ok_or_else(|| Error::Generic("failed to get HEAD".to_string()))?;
+            .ok_or_else(|| Error::from_str("failed to get HEAD"))?;
 
         let remote_ref_name = self.repo.branch_upstream_name(name)?;
 
         Ok(remote_ref_name
             .as_str()
-            .ok_or_else(|| Error::Generic("failed to get remote_ref".to_string()))?
+            .ok_or_else(|| Error::from_str("failed to get remote_ref"))?
             .to_string())
     }
 
@@ -451,7 +451,7 @@ impl Git {
         let remote_ref = self.repo.find_reference(&remote_ref_name)?;
         remote_ref
             .target()
-            .ok_or_else(|| Error::Generic("failed to get remote target".to_string()))
+            .ok_or_else(|| Error::from_str("failed to get remote target"))
     }
 
     fn unpushed_changes(&self) -> Result<usize> {

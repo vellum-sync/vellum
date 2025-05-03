@@ -46,16 +46,16 @@ pub fn init(args: Args) -> Result<()> {
 
 fn show_bash() -> Result<()> {
     debug!("init bash ...");
-    let script = assets::get_file("init.bash")
-        .ok_or_else(|| Error::Generic("bash init script missing".to_string()))?;
+    let script =
+        assets::get_file("init.bash").ok_or_else(|| Error::from_str("bash init script missing"))?;
     stdout().write_all(script.contents())?;
     Ok(())
 }
 
 fn show_zsh() -> Result<()> {
     debug!("init zsh ...");
-    let script = assets::get_file("init.zsh")
-        .ok_or_else(|| Error::Generic("zsh init script missing".to_string()))?;
+    let script =
+        assets::get_file("init.zsh").ok_or_else(|| Error::from_str("zsh init script missing"))?;
     stdout().write_all(script.contents())?;
     Ok(())
 }

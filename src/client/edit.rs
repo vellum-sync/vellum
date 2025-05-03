@@ -149,7 +149,7 @@ fn get_editor() -> Result<PathBuf> {
     if let Ok(vi) = which("vi") {
         return Ok(vi);
     }
-    Err(Error::Generic("unable to find editor".to_string()))
+    Err(Error::from_str("unable to find editor"))
 }
 
 fn parse_file<P: AsRef<Path>>(path: P) -> Result<HashMap<Uuid, String>> {
