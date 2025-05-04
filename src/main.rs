@@ -149,7 +149,7 @@ fn main() {
         Commands::Delete { ids } => client::delete(&config, ids),
         Commands::Import(args) => client::import(&config, args),
         Commands::Config => config.show(),
-        Commands::Init(args) => init::init(args),
+        Commands::Init(args) => init::init(args, Cli::command()),
         Commands::Complete(args) => complete::complete(args, Cli::command()),
         Commands::Ping { wait } => client::ping(&config, wait),
         Commands::Sync { force } => client::sync(&config, force),
