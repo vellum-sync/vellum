@@ -1,0 +1,75 @@
+#!/bin/bash
+
+set -e
+
+cd "$(dirname "$0")"
+
+c=$'\e[36m'
+r=$'\e[0m'
+
+echo -e "${c}build vellum ...${r}"
+(
+    cd ..;
+    cargo build --release
+)
+
+readonly plat_dist="$(pwd)/../target/release"
+
+echo -e "${c}build images ...${r}"
+docker build --pull -t vellum/rpm images/rpm
+docker build --pull -t vellum/deb images/deb
+docker build --pull -t vellum/arch images/arch
+
+echo -e "${c}get version ...${r}"
+version="$("${plat_dist}/vellum" --version | awk '/^vellum/{print $2}')"
+version="${version#v}"
+release="${version#*-}"
+release="${release//-/_}"
+combined="${version//-/_}"
+version="${version%%-*}"
+if [ "$release" == "$version" ]; then
+    release="0"
+fi
+echo "VERSION: $version, RELEASE: $release"
+
+echo -e "${c}create completions ...${r}"
+rm -rf completion
+mkdir -p completion
+"${plat_dist}/vellum" complete bash > ./completion/bash
+"${plat_dist}/vellum" complete zsh > ./completion/zsh
+"${plat_dist}/vellum" complete fish > ./completion/fish
+
+echo -e "${c}create man pages ...${r}"
+rm -rf man1
+mkdir -p man1
+"${plat_dist}/vellum" init man ./man1
+
+echo -e "${c}package vellum ...${r}"
+tar -zcf "$(pwd)/vellum_${version}_${release}_linux_amd64.tgz" -C "${plat_dist}" vellum
+
+echo -e "${c}insert version into spec file ...${r}"
+sed -e "s#@@VERSION@@#$version#" -e "s#@@RELEASE@@#$release#" vellum.spec > tmp.spec
+
+echo -e "${c}copy files ...${r}"
+rm -rf files
+mkdir -p files
+cp -a "${plat_dist}/vellum" files/vellum
+cp -a ../LICENSE files/LICENSE
+
+echo -e "${c}build rpm ...${r}"
+wr --auto-clean -c rpm rpmbuild --define "_topdir /package/rpm-root" -bb tmp.spec
+if ! [ -L "rpms" ]; then
+    ln -sf rpm-root/RPMS/x86_64 rpms
+fi
+
+echo -e "${c}build deb ...${r}"
+wr --auto-clean -c deb bash ./build-deb "$version" "$release"
+
+echo -e "${c}insert version info PKGBUILD file ...${r}"
+sed -e "s#@@VERSION@@#$combined#" PKGBUILD > vellum.PKGBUILD
+
+echo -e "${c}build arch package ...${r}"
+wr --auto-clean -c arch makepkg -fp "/package/vellum.PKGBUILD"
+
+echo -e "${c}cleanup ...${r}"
+rm tmp.spec

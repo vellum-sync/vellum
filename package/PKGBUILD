@@ -1,0 +1,47 @@
+# shellcheck shell=bash disable=SC2034,SC2154
+# Maintainer: Julian Phillips <julian@quantumfyre.co.uk>
+pkgname=vellum
+pkgver=@@VERSION@@
+pkgrel=1
+epoch=
+pkgdesc="sync shell history using git"
+arch=('x86_64')
+url="https://vellum.qur.me"
+license=('MIT')
+groups=()
+depends=()
+makedepends=()
+checkdepends=()
+optdepends=()
+provides=()
+conflicts=()
+replaces=()
+backup=()
+options=()
+install=
+changelog=
+source=()
+noextract=()
+md5sums=()
+validpgpkeys=()
+
+prepare() {
+	:
+}
+
+build() {
+	:
+}
+
+check() {
+	:
+}
+
+package() {
+	install -Dm644 /package/files/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+	install -Dm755 /package/files/vellum "$pkgdir/usr/bin/vellum"
+	install -Dm644 /package/completion/bash "$pkgdir/usr/share/bash-completion/completions/vellum"
+	install -Dm644 /package/completion/zsh "$pkgdir/usr/share/zsh/site-functions/_vellum"
+	install -Dm644 /package/completion/fish "$pkgdir/usr/share/fish/vendor_completions.d/vellum.fish"
+	install -Dm644 -t "$pkgdir/usr/share/man/man1" /package/man1/*
+}

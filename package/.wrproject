@@ -1,0 +1,19 @@
+[crates.rpm]
+  image = "vellum/rpm"
+  mount-home = false
+  project-mount = "/package"
+  working-dir = "project, match"
+
+[crates.deb]
+  image = "vellum/deb"
+  mount-home = false
+  project-mount = "/package"
+  working-dir = "project, match"
+  cap-add = ["SYS_PTRACE"]
+
+[crates.arch]
+  image = "vellum/arch"
+  mount-home = false
+  project-mount = "/package"
+  working-dir = "project, match"
+

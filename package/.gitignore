@@ -1,0 +1,12 @@
+/completion/
+/files/
+/man1/
+/rpm-root/
+/tmp.spec
+/rpms
+/debs/
+/deb-scratch/
+/vellum.PKGBUILD
+/pkg/
+/*.zst
+/vellum_*.tgz

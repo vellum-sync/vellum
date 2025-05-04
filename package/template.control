@@ -1,0 +1,9 @@
+Package: @@package@@
+Section: universe
+Priority: extra
+Maintainer: Julian Phillips <julian@quantumfyre.co.uk>
+Version: @@version@@
+Architecture: amd64
+Description: sync shell history using git
+ vellum syncs shell command history between hosts using a git repository as a
+ central synchronisation point.
