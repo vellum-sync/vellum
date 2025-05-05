@@ -71,13 +71,19 @@ impl Git {
         }
     }
 
-    fn try_fetch(&self, mut locked: bool, mut changes: Option<Oid>) -> Result<(bool, Option<Oid>)> {
-        let head_ref = self.repo.head()?;
-        let ref_name = head_ref
-            .name()
-            .ok_or_else(|| Error::from_str("unable to resolve HEAD"))?;
+    fn head_ref_name(&self) -> Result<String> {
+        let head = self.repo.find_reference("HEAD")?;
+        let name = head
+            .symbolic_target()
+            .ok_or_else(|| Error::from_str("HEAD not symbolic ref"))?;
+        Ok(name.to_string())
+    }
 
+    fn try_fetch(&self, mut locked: bool, mut changes: Option<Oid>) -> Result<(bool, Option<Oid>)> {
+        let ref_name = self.head_ref_name()?;
         let upstream_ref_name = self.get_head_upstream_ref()?;
+
+        debug!("fetch: {ref_name} <- {upstream_ref_name}");
 
         let cm = CredsManager::new(&self.cfg)?;
 
@@ -103,8 +109,10 @@ impl Git {
 
         let mut remote = self.repo.find_remote("origin")?;
 
+        debug!("fetch {ref_name} from {:?} with tags", remote.url());
+
         remote.fetch::<&str>(
-            &[ref_name, "refs/tags/*:refs/tags/*"],
+            &[&ref_name, "refs/tags/*:refs/tags/*"],
             Some(&mut opts),
             None,
         )?;
@@ -270,24 +278,18 @@ impl Git {
 
         let mut remote = self.repo.find_remote("origin")?;
 
-        let head_ref = self.repo.head()?.resolve()?;
-        let name = head_ref
-            .name()
-            .ok_or_else(|| Error::from_str("unable to resolve HEAD"))?;
+        let name = self.head_ref_name()?;
 
-        Ok(remote.push(&[name], Some(&mut opts))?)
+        Ok(remote.push(&[&name], Some(&mut opts))?)
     }
 
     fn force_push(&self) -> Result<()> {
         debug!("start force push ...");
 
-        let head_ref = self.repo.head()?;
-        let name = head_ref
-            .name()
-            .ok_or_else(|| Error::from_str("unable to resolve HEAD"))?;
+        let head_ref = self.head_ref_name()?;
 
         let remote_target = self.get_head_upstream_target()?;
-        debug!("remote target: {}", remote_target);
+        debug!("remote target: {:?}", remote_target);
 
         let cm = CredsManager::new(&self.cfg)?;
 
@@ -315,8 +317,10 @@ impl Git {
                         update.dst()
                     );
                     if let Some(src_ref) = update.src_refname() {
-                        if src_ref == name && update.src() != remote_target {
-                            return Err(git2::Error::from_str("remote oid has changed"));
+                        if let Some(remote_target) = remote_target {
+                            if src_ref == head_ref && update.src() != remote_target {
+                                return Err(git2::Error::from_str("remote oid has changed"));
+                            }
                         }
                     }
                 }
@@ -326,7 +330,7 @@ impl Git {
         let mut opts = PushOptions::new();
         opts.remote_callbacks(cbs);
 
-        let refspec = format!("+{name}:{name}");
+        let refspec = format!("+{head_ref}:{head_ref}");
         let mut remote = self.repo.find_remote("origin")?;
 
         Ok(remote.push(&[&refspec], Some(&mut opts))?)
@@ -335,12 +339,11 @@ impl Git {
     fn tip(&self) -> Result<Option<Commit>> {
         let oid = match self.repo.head() {
             Ok(head) => head.target(),
-            Err(e) => {
-                if e.code() == ErrorCode::NotFound {
-                    return Ok(None);
-                }
-                return Err(e.into());
-            }
+            Err(e) => match e.code() {
+                ErrorCode::NotFound => return Ok(None),
+                ErrorCode::UnbornBranch => return Ok(None),
+                _ => return Err(e.into()),
+            },
         };
         Ok(match oid {
             Some(id) => Some(self.repo.find_commit(id)?),
@@ -433,33 +436,34 @@ impl Git {
     }
 
     fn get_head_upstream_ref(&self) -> Result<String> {
-        let head = self.repo.head()?;
-        let name = head
-            .name()
-            .ok_or_else(|| Error::from_str("failed to get HEAD"))?;
-
-        let remote_ref_name = self.repo.branch_upstream_name(name)?;
-
+        let name = self.head_ref_name()?;
+        let remote_ref_name = self.repo.branch_upstream_name(&name)?;
         Ok(remote_ref_name
             .as_str()
             .ok_or_else(|| Error::from_str("failed to get remote_ref"))?
             .to_string())
     }
 
-    fn get_head_upstream_target(&self) -> Result<Oid> {
+    fn get_head_upstream_target(&self) -> Result<Option<Oid>> {
         let remote_ref_name = self.get_head_upstream_ref()?;
-        let remote_ref = self.repo.find_reference(&remote_ref_name)?;
-        remote_ref
-            .target()
-            .ok_or_else(|| Error::from_str("failed to get remote target"))
+        let remote_ref = match self.repo.find_reference(&remote_ref_name) {
+            Ok(reference) => reference,
+            Err(e) => match e.code() {
+                ErrorCode::NotFound => return Ok(None),
+                ErrorCode::UnbornBranch => return Ok(None),
+                _ => return Err(e.into()),
+            },
+        };
+        Ok(remote_ref.target())
     }
 
     fn unpushed_changes(&self) -> Result<usize> {
-        let upstream = self.get_head_upstream_target()?;
-
         let mut walk = self.repo.revwalk()?;
         walk.push_head()?;
-        walk.hide(upstream)?;
+
+        if let Some(upstream) = self.get_head_upstream_target()? {
+            walk.hide(upstream)?;
+        }
 
         Ok(walk.count())
     }
