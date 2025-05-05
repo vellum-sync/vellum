@@ -10,3 +10,5 @@
 /pkg/
 /*.zst
 /vellum_*.tgz
+/*.sig
+/*.gpg

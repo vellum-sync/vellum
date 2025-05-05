@@ -69,7 +69,17 @@ echo -e "${c}insert version info PKGBUILD file ...${r}"
 sed -e "s#@@VERSION@@#$combined#" PKGBUILD > vellum.PKGBUILD
 
 echo -e "${c}build arch package ...${r}"
-wr --auto-clean -c arch makepkg -fp "/package/vellum.PKGBUILD"
+if [[ -n "$VELLUM_SIGN_KEY" ]]; then
+    makepkg_args+=("--sign")
+    rm *.gpg
+    touch vellum-secret.gpg
+    chmod 600 vellum-secret.gpg
+    gpg --armor --export "$VELLUM_SIGN_KEY" > vellum-public.gpg
+    gpg --armor --export-secret-key "$VELLUM_SIGN_KEY" >> vellum-secret.gpg
+    export GPGKEY="$VELLUM_SIGN_KEY"
+    wr --auto-clean -c arch gpg --import vellum-secret.gpg
+fi
+wr --auto-clean -c arch makepkg "${makepkg_args[@]}" -fp "/package/vellum.PKGBUILD"
 
 echo -e "${c}cleanup ...${r}"
 rm tmp.spec
