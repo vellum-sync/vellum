@@ -2,7 +2,7 @@
 name = "vellum"
 version = "0.5.2"
 edition = "2024"
-description = "Records the history of commands run"
+description = "sync shell history using git"
 
 [dependencies]
 aws-lc-rs = "1.13.0"

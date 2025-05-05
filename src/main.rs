@@ -16,7 +16,7 @@ mod process;
 mod server;
 mod sync;
 
-pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
+const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling::Styles::styled()
     .header(clap_cargo::style::HEADER)
     .usage(clap_cargo::style::USAGE)
     .literal(clap_cargo::style::LITERAL)
@@ -25,8 +25,11 @@ pub const CLAP_STYLING: clap::builder::styling::Styles = clap::builder::styling:
     .valid(clap_cargo::style::VALID)
     .invalid(clap_cargo::style::INVALID);
 
+const LONG_ABOUT: &str = r#"vellum syncs shell command history between hosts using a git repository as a
+ central synchronisation point."#;
+
 #[derive(Parser)]
-#[command(version, about, long_about = None)]
+#[command(version, about, long_about = LONG_ABOUT)]
 #[command(styles = CLAP_STYLING)]
 struct Cli {
     /// Path to configuration file
