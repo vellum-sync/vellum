@@ -108,6 +108,13 @@ enum Commands {
         #[arg(short, long)]
         no_sync: bool,
     },
+
+    /// Show version information of client and server
+    Version {
+        /// Display the version information as JSON
+        #[arg(short, long)]
+        json: bool,
+    },
 }
 
 fn create_log_file(log_file: &str) -> io::Result<fs::File> {
@@ -159,6 +166,7 @@ fn main() {
         Commands::Rebuild => client::rebuild(&config),
         Commands::Server(args) => server::run(&config, args),
         Commands::Stop { no_sync } => client::stop_server(&config, no_sync),
+        Commands::Version { json } => client::version(&config, json),
     } {
         error!("{e}");
         exit(1);

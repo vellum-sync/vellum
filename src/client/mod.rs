@@ -1,6 +1,8 @@
 use std::time::Duration;
 
+use clap::crate_version;
 use log::{debug, info};
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
@@ -77,6 +79,28 @@ pub fn rebuild(cfg: &Config) -> Result<()> {
     for status in conn.rebuild()? {
         let status = status?;
         info!("{status}");
+    }
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+struct Version {
+    client: String,
+    server: String,
+}
+
+pub fn version(cfg: &Config, json: bool) -> Result<()> {
+    let mut conn = server::ensure_ready(cfg)?;
+    let server_version = conn.version_request()?;
+    if json {
+        let version = Version {
+            client: crate_version!().to_string(),
+            server: server_version,
+        };
+        print!("{}", serde_json::to_string(&version)?);
+    } else {
+        println!("Client: {}", crate_version!());
+        println!("Server: {server_version}");
     }
     Ok(())
 }

@@ -410,6 +410,12 @@ impl Server {
                     error!("Failed to send complete: {e}");
                 }
             }
+            Message::VersionRequest => {
+                debug!("Received version request");
+                if let Err(e) = conn.send_version(crate_version!()) {
+                    error!("Failed to send ack: {e}");
+                };
+            }
             r => {
                 error!("received unknown request: {r:?}");
                 if let Err(e) = conn.error(format!("unknown request: {r:?}")) {

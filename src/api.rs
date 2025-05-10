@@ -159,6 +159,20 @@ impl Connection {
         let msg = Message::RebuildComplete(result);
         self.send(&msg)
     }
+
+    pub fn version_request(&mut self) -> Result<String> {
+        let msg = Message::VersionRequest;
+        match self.request(&msg)? {
+            Message::Version(v) => Ok(v),
+            Message::Error(e) => Err(Error::Generic(e)),
+            m => Err(Error::Generic(format!("unexpected response: {m:?}"))),
+        }
+    }
+
+    pub fn send_version(&mut self, version: &str) -> Result<()> {
+        let msg = Message::Version(version.to_string());
+        self.send(&msg)
+    }
 }
 
 #[derive(Debug)]
@@ -275,6 +289,8 @@ pub enum Message {
     Rebuild,
     RebuildStatus(String),
     RebuildComplete(Option<String>),
+    VersionRequest,
+    Version(String),
 }
 
 pub fn ping(cfg: &Config, wait: Option<Duration>) -> Result<Connection> {
