@@ -67,7 +67,7 @@ cp "${dir}/lintian" "${scratch}/usr/share/lintian/overrides/${name}"
 
 cat > "${scratch}/DEBIAN/postinst" <<EOF
 #!/bin/sh
-killall vellum
+killall vellum || true
 EOF
 
 echo "Fix permissions ..."

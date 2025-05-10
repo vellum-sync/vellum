@@ -38,7 +38,7 @@ install -Dm644 /package/man1/* "$RPM_BUILD_ROOT/usr/share/man/man1"
 
 %post
 #!/bin/sh
-killall vellum
+killall vellum || true
 
 
 %changelog
