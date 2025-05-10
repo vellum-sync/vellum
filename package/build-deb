@@ -65,6 +65,11 @@ cp "/${dir}/files/LICENSE" "${scratch}/usr/share/doc/${name}/copyright"
 
 cp "${dir}/lintian" "${scratch}/usr/share/lintian/overrides/${name}"
 
+cat > "${scratch}/DEBIAN/postinst" <<EOF
+#!/bin/sh
+killall vellum
+EOF
+
 echo "Fix permissions ..."
 find "${scratch}" -type f -exec chmod 644 {} \;
 find "${scratch}" -type d -exec chmod 755 {} \;

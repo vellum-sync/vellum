@@ -1,6 +1,6 @@
 Package: @@package@@
-Section: universe
-Priority: extra
+Section: misc
+Priority: optional
 Maintainer: Julian Phillips <julian@quantumfyre.co.uk>
 Version: @@version@@
 Architecture: amd64
