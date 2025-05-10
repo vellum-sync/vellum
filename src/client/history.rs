@@ -3,7 +3,6 @@ use std::{cmp, collections::HashSet};
 use log::debug;
 
 use crate::{
-    api::Connection,
     config::Config,
     error::{Error, Result},
     history::Entry,
@@ -56,9 +55,8 @@ pub struct HistoryArgs {
 }
 
 pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
-    server::ensure_ready(cfg)?;
     let filter = Filter::new(args.filter)?;
-    let mut conn = Connection::new(cfg)?;
+    let mut conn = server::ensure_ready(cfg)?;
     let mut history: Vec<Entry> = filter.history_request(&mut conn)?;
     let mut seen = HashSet::new();
     if args.fzf {

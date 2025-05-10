@@ -5,7 +5,7 @@ use std::{
 
 use clap::ValueHint;
 
-use crate::{api::Connection, config::Config, error::Result, server};
+use crate::{config::Config, error::Result, server};
 
 use super::Session;
 
@@ -29,8 +29,7 @@ pub fn import(cfg: &Config, args: ImportArgs) -> Result<()> {
         None => Box::new(BufReader::new(stdin())),
     };
 
-    server::ensure_ready(cfg)?;
-    let mut conn = Connection::new(cfg)?;
+    let mut conn = server::ensure_ready(cfg)?;
 
     let session = if args.current_session {
         Session::get()?.id

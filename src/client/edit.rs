@@ -13,10 +13,10 @@ use uuid::Uuid;
 use which::which;
 
 use crate::{
-    api::Connection,
     config::Config,
     error::{Error, Result},
     history::Entry,
+    server,
 };
 
 use super::{Filter, FilterArgs, Session};
@@ -57,7 +57,7 @@ pub struct EditArgs {
 
 pub fn edit(cfg: &Config, args: EditArgs) -> Result<()> {
     let filter = Filter::new(args.filter)?;
-    let mut conn = Connection::new(cfg)?;
+    let mut conn = server::ensure_ready(cfg)?;
     let history: Vec<Entry> = filter.history_request(&mut conn)?;
 
     if history.is_empty() {

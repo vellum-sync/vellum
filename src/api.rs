@@ -277,27 +277,34 @@ pub enum Message {
     RebuildComplete(Option<String>),
 }
 
-pub fn ping(cfg: &Config, wait: bool) -> Result<()> {
-    let limit = Duration::from_secs(5);
+pub fn ping(cfg: &Config, wait: Option<Duration>) -> Result<Connection> {
     let start = Instant::now();
-    while start.elapsed() < limit {
+    loop {
         match try_ping(cfg) {
-            Ok(_) => return Ok(()),
+            Ok(conn) => {
+                debug!("took {:?} to get response from server", start.elapsed());
+                return Ok(conn);
+            }
             Err(e) => {
-                if !wait {
+                if wait.is_none() {
                     return Err(e);
                 }
             }
         }
+
+        let limit = wait.unwrap();
+        if start.elapsed() >= limit {
+            return Err(Error::Generic(format!(
+                "server didn't respond to ping within {limit:?}"
+            )));
+        }
+
         sleep(Duration::from_millis(100));
     }
-    Err(Error::Generic(format!(
-        "server didn't respond to ping within {limit:?}"
-    )))
 }
 
-fn try_ping(cfg: &Config) -> Result<()> {
+fn try_ping(cfg: &Config) -> Result<Connection> {
     let mut conn = Connection::new(cfg)?;
     conn.ping()?;
-    Ok(())
+    Ok(conn)
 }

@@ -4,7 +4,7 @@ use clap::ValueHint;
 use log::debug;
 use uuid::Uuid;
 
-use crate::{api::Connection, config::Config, error::Result, history::Entry, server};
+use crate::{config::Config, error::Result, history::Entry, server};
 
 use super::{Filter, FilterArgs};
 
@@ -34,11 +34,9 @@ pub struct MoveArgs {
 }
 
 pub fn do_move(cfg: &Config, args: MoveArgs) -> Result<()> {
-    server::ensure_ready(cfg)?;
-
     debug!("move: {args:?}");
 
-    let mut conn = Connection::new(cfg)?;
+    let mut conn = server::ensure_ready(cfg)?;
     let filter = Filter::new(args.filter)?;
     let mut history: Vec<Entry> = filter.history_request(&mut conn)?;
 

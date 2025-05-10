@@ -86,7 +86,7 @@ pub fn run(config: &Config, args: Args) -> Result<()> {
         debug!("start the server");
         ensure_running(config, true)?;
         debug!("wait for server to respond ...");
-        ping(config, true)?;
+        ping(config, Some(Duration::from_secs(30)))?;
         return Ok(());
     } else if let Fork::Child = daemon(false, false)? {
         background(config, args.force);
@@ -179,12 +179,12 @@ fn ensure_running(cfg: &Config, force: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn ensure_ready(cfg: &Config) -> Result<()> {
+pub fn ensure_ready(cfg: &Config) -> Result<Connection> {
     ensure_running(cfg, false)?;
     debug!("wait for server to respond ...");
-    ping(cfg, true)?;
+    let conn = ping(cfg, Some(Duration::from_secs(1)))?;
     debug!("server is ready");
-    Ok(())
+    Ok(conn)
 }
 
 #[derive(Debug, Clone)]
