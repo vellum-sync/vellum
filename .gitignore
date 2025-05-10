@@ -1,2 +1,6 @@
 /target/
 /.wrenv/
+/vellum*.toml
+/bash-preexec.sh
+/setup*.zsh
+/setup*.bash
