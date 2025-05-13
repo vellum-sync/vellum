@@ -6,11 +6,12 @@ use std::{
 };
 
 use git2::{
-    Commit, Cred, CredentialType, ErrorCode, FetchOptions, FetchPrune, Index, IndexAddOption, Oid,
-    PushOptions, Rebase, RebaseOptions, RemoteCallbacks, Repository, build::RepoBuilder,
+    Commit, Cred, CredentialType, ErrorClass, ErrorCode, FetchOptions, FetchPrune, Index,
+    IndexAddOption, Oid, PushOptions, Rebase, RebaseOptions, RemoteCallbacks, Repository,
+    build::RepoBuilder,
 };
 use humantime::format_duration;
-use log::{debug, error};
+use log::{debug, error, warn};
 
 use crate::{
     config::Config,
@@ -225,10 +226,18 @@ impl Git {
     }
 
     fn pull(&self) -> Result<()> {
-        if let Some(old) = self.fetch()? {
-            self.rebase(Some(old))?;
+        // we are a little forgiving of network errors here, so that we continue
+        // to update the local git repo if we are not able to connect to the
+        // remote repo.
+        match self.fetch() {
+            Ok(Some(old)) => self.rebase(Some(old)),
+            Ok(None) => Ok(()),
+            Err(Error::Git(e)) if e.class() == ErrorClass::Net => {
+                warn!("Fetch encountered network error, continuing");
+                Ok(())
+            }
+            Err(e) => Err(e),
         }
-        Ok(())
     }
 
     fn locked_pull(&self) -> Result<()> {
