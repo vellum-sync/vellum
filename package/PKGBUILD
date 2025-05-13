@@ -38,6 +38,13 @@ check() {
 }
 
 package() {
+	depends=(
+		'fzf>=0.60.0'
+	)
+	optdepends=(
+		'bash-preexec: bash support'
+	)
+
 	install -Dm644 /package/files/LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 	install -Dm755 /package/files/vellum "$pkgdir/usr/bin/vellum"
 	install -Dm644 /package/completion/bash "$pkgdir/usr/share/bash-completion/completions/vellum"
