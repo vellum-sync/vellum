@@ -29,7 +29,7 @@ pub fn server_is_running(cfg: &Config) -> Result<bool> {
     );
 
     match s.process(pid) {
-        Some(_) => Ok(true),
+        Some(p) => Ok(p.name().to_string_lossy().contains("vellum")),
         None => Ok(false),
     }
 }
