@@ -107,6 +107,15 @@ impl Filter {
         true
     }
 
+    pub fn enumerate_history_request(&self, conn: &mut Connection) -> Result<Vec<(usize, Entry)>> {
+        Ok(conn
+            .history_request()?
+            .into_iter()
+            .enumerate()
+            .filter(|(_, entry)| self.entry(entry))
+            .collect())
+    }
+
     pub fn history_request(&self, conn: &mut Connection) -> Result<Vec<Entry>> {
         Ok(conn
             .history_request()?

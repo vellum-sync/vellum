@@ -50,118 +50,179 @@ pub struct HistoryArgs {
     fzf: bool,
 
     /// The first entry in the history to show, negative values count back from
-    /// the end.
+    /// the end (after filters have been applied).
     #[arg(default_value = "-10")]
     first: isize,
 
     /// The last entry in the history to show, negative values count back from
-    /// the end. It has to be after the start point.
-    last: Option<isize>,
+    /// the end (after filters have been applied). It has to be after the start
+    /// point.
+    #[arg(default_value = "-1")]
+    last: isize,
 }
 
 pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
+    if args.fzf {
+        fzf_history(cfg, args)
+    } else if args.json {
+        json_history(cfg, args)
+    } else {
+        test_history(cfg, args)
+    }
+}
+
+fn fzf_history(cfg: &Config, args: HistoryArgs) -> Result<()> {
     let filter = Filter::new(args.filter)?;
     let mut conn = server::ensure_ready(cfg)?;
-    let mut history: Vec<Entry> = filter.history_request(&mut conn)?;
+
+    let history = filter.enumerate_history_request(&mut conn)?;
     debug!("got filtered history with {} entries", history.len());
+
     let mut seen = HashSet::new();
-    if args.fzf {
-        for (index, entry) in history
-            .iter()
-            .enumerate()
-            .rev()
-            .filter(|(_, entry)| seen.insert(&entry.cmd))
-        {
-            print!("{}\t{}\x00", index + 1, entry.cmd);
-        }
-    } else if args.json {
-        if args.reverse {
-            history.reverse();
-        }
-        let json = serde_json::to_string(&history)?;
-        println!("{json}");
-    } else {
-        let index_size = (history.len() + 1).to_string().len();
-        let host_size = history
-            .iter()
-            .fold(0, |max, entry| cmp::max(max, entry.host.len()));
-        if args.verbose && !args.no_headers {
-            if args.id {
-                println!(
-                    "{:36}\t{:host_size$}\t{:35}\tCOMMAND",
-                    "ID", "HOST", "TIMESTAMP"
-                );
-            } else {
-                println!(
-                    "{:index_size$}\t{:host_size$}\t{:35}\tCOMMAND",
-                    "INDEX", "HOST", "TIMESTAMP"
-                );
-            }
-        }
-        let mut filtered: Vec<(usize, &Entry)> = history
-            .iter()
-            .enumerate()
-            .rev()
-            .filter(|(_, entry)| !args.no_duplicates || seen.insert(&entry.cmd))
-            .collect();
-        if !args.reverse {
-            filtered.reverse();
-        }
-        let first = get_index("FIRST", Some(args.first), filtered.len())?.unwrap_or(0);
-        let last = get_index("LAST", args.last, filtered.len())?.unwrap_or(filtered.len() - 1);
-        debug!("show history from {first} to {last}");
-        if !filtered.is_empty() && last < first {
-            return Err(Error::Generic(format!(
-                "LAST ({}) must not be before FIRST ({})",
-                args.last.unwrap(),
-                args.first
-            )));
-        }
-        for (index, entry) in filtered {
-            if index < first || index > last {
-                continue;
-            }
-            if args.verbose {
-                if args.id {
-                    println!(
-                        "{:36}\t{:host_size$}\t{:35}\t{}",
-                        entry.id,
-                        entry.host,
-                        entry.ts.to_rfc3339(),
-                        entry.cmd
-                    );
-                } else {
-                    println!(
-                        "{:index_size$}\t{:host_size$}\t{:35}\t{}",
-                        index + 1,
-                        entry.host,
-                        entry.ts.to_rfc3339(),
-                        entry.cmd
-                    );
-                }
-                continue;
-            }
-            if args.number {
-                print!("{:index_size$}\t", index + 1);
-            }
-            if args.id {
-                print!("{:36}\t", entry.id);
-            }
-            println!("{}", entry.cmd);
-        }
+    for (index, entry) in history
+        .iter()
+        .rev()
+        .filter(|(_, entry)| seen.insert(&entry.cmd))
+    {
+        print!("{}\t{}\x00", index + 1, entry.cmd);
     }
+
     Ok(())
 }
 
-fn get_index(label: &str, idx: Option<isize>, max: usize) -> Result<Option<usize>> {
+fn json_history(cfg: &Config, args: HistoryArgs) -> Result<()> {
+    let filter = Filter::new(args.filter)?;
+    let mut conn = server::ensure_ready(cfg)?;
+
+    let mut history = filter.history_request(&mut conn)?;
+    debug!("got filtered history with {} entries", history.len());
+
+    if args.reverse {
+        history.reverse();
+    }
+
+    let json = serde_json::to_string(&history)?;
+    println!("{json}");
+
+    Ok(())
+}
+
+fn test_history(cfg: &Config, args: HistoryArgs) -> Result<()> {
+    let filter = Filter::new(args.filter)?;
+    let mut conn = server::ensure_ready(cfg)?;
+
+    let history = filter.enumerate_history_request(&mut conn)?;
+    debug!("got filtered history with {} entries", history.len());
+
+    let index_size = (history.len() + 1).to_string().len();
+    let host_size = history
+        .iter()
+        .fold(0, |max, (_, entry)| cmp::max(max, entry.host.len()));
+
+    if args.verbose && !args.no_headers {
+        if args.id {
+            println!(
+                "{:36}\t{:host_size$}\t{:35}\tCOMMAND",
+                "ID", "HOST", "TIMESTAMP"
+            );
+        } else {
+            println!(
+                "{:index_size$}\t{:host_size$}\t{:35}\tCOMMAND",
+                "INDEX", "HOST", "TIMESTAMP"
+            );
+        }
+    }
+
+    let mut seen = HashSet::new();
+    let mut filtered: Vec<&(usize, Entry)> = history
+        .iter()
+        .rev()
+        .filter(|(_, entry)| !args.no_duplicates || seen.insert(&entry.cmd))
+        .collect();
+    if !args.reverse {
+        filtered.reverse();
+    }
+
+    let first = get_index("FIRST", args.first, &filtered)?;
+    let last = get_index("LAST", args.last, &filtered)?;
+    debug!("show history from {first} to {last}");
+
+    if !filtered.is_empty() && last < first {
+        return Err(Error::Generic(format!(
+            "LAST ({}) must not be before FIRST ({})",
+            args.last, args.first
+        )));
+    }
+
+    for (index, entry) in filtered {
+        if index < &first || index > &last {
+            continue;
+        }
+        if args.verbose {
+            if args.id {
+                println!(
+                    "{:36}\t{:host_size$}\t{:35}\t{}",
+                    entry.id,
+                    entry.host,
+                    entry.ts.to_rfc3339(),
+                    entry.cmd
+                );
+            } else {
+                println!(
+                    "{:index_size$}\t{:host_size$}\t{:35}\t{}",
+                    index + 1,
+                    entry.host,
+                    entry.ts.to_rfc3339(),
+                    entry.cmd
+                );
+            }
+            continue;
+        }
+        if args.number {
+            print!("{:index_size$}\t", index + 1);
+        }
+        if args.id {
+            print!("{:36}\t", entry.id);
+        }
+        println!("{}", entry.cmd);
+    }
+
+    Ok(())
+}
+
+fn get_index(label: &str, idx: isize, history: &[&(usize, Entry)]) -> Result<usize> {
+    let max = history
+        .iter()
+        .map(|(index, _)| index)
+        .next_back()
+        .cloned()
+        .unwrap_or(0);
     match idx {
-        Some(0) => Err(Error::Generic(format!("0 is not a valid {label} value"))),
-        Some(n) if n < 0 && (((-n) as usize) <= max) => Ok(Some((max as isize + n) as usize)),
-        Some(n) if n < 0 && (((-n) as usize) > max) => Ok(Some(0_usize)),
-        Some(n) if n > 0 && ((n as usize) <= max) => Ok(Some((n - 1) as usize)),
-        Some(n) => Err(Error::Generic(format!(
+        0 => Err(Error::Generic(format!("0 is not a valid {label} value"))),
+        n if n < 0 && ((-n as usize) <= max) => index_of_last_n(-n as usize, history),
+        n if n < 0 && ((-n as usize) > max) => Ok(0_usize),
+        n if n > 0 && ((n as usize) <= max) => Ok((n - 1) as usize),
+        n => Err(Error::Generic(format!(
             "Can't use {label} of {n} with {max} entries",
         ))),
-        None => Ok(None),
     }
+}
+
+fn index_of_last_n(n: usize, history: &[&(usize, Entry)]) -> Result<usize> {
+    debug!("get index of last {n} entries");
+    let idx = history
+        .iter()
+        .rev()
+        .take(n)
+        .map(|(idx, _)| idx)
+        .next_back()
+        .cloned()
+        .ok_or_else(|| {
+            Error::Generic(format!(
+                "Can't get last {n} of {} entry history",
+                history.len()
+            ))
+        })?;
+    debug!("got index: {idx}");
+    Ok(idx)
 }
