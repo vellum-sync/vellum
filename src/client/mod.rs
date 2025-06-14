@@ -15,12 +15,14 @@ use crate::{
 
 mod edit;
 mod filter;
+mod get;
 mod history;
 mod import;
 mod r#move;
 mod session;
 
 pub use edit::*;
+pub use get::*;
 pub use history::*;
 pub use import::*;
 pub use r#move::*;

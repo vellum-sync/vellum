@@ -51,6 +51,9 @@ enum Commands {
     /// List all the stored commands
     History(client::HistoryArgs),
 
+    /// Get a single command from the history
+    Get(client::GetArgs),
+
     /// Move through the history relative to a given point
     Move(client::MoveArgs),
 
@@ -154,6 +157,7 @@ fn main() {
     if let Err(e) = match cli.command {
         Commands::Store { shell_command } => client::store(&config, shell_command),
         Commands::History(args) => client::history(&config, args),
+        Commands::Get(args) => client::get(&config, args),
         Commands::Move(args) => client::do_move(&config, args),
         Commands::Edit(args) => client::edit(&config, args),
         Commands::Delete { ids } => client::delete(&config, ids),
