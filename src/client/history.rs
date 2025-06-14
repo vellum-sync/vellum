@@ -142,7 +142,7 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
                 continue;
             }
             if args.number {
-                print!("{:index_size$}\t", index);
+                print!("{:index_size$}\t", index + 1);
             }
             if args.id {
                 print!("{:36}\t", entry.id);
