@@ -20,6 +20,10 @@ pub struct HistoryArgs {
     #[arg(long)]
     id: bool,
 
+    /// Show the history index numbers
+    #[arg(short, long)]
+    number: bool,
+
     /// Show more complete output, instead of just the commands
     #[arg(short, long)]
     verbose: bool,
@@ -47,7 +51,8 @@ pub struct HistoryArgs {
 
     /// The first entry in the history to show, negative values count back from
     /// the end.
-    first: Option<isize>,
+    #[arg(default_value = "-10")]
+    first: isize,
 
     /// The last entry in the history to show, negative values count back from
     /// the end. It has to be after the start point.
@@ -58,6 +63,7 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
     let filter = Filter::new(args.filter)?;
     let mut conn = server::ensure_ready(cfg)?;
     let mut history: Vec<Entry> = filter.history_request(&mut conn)?;
+    debug!("got filtered history with {} entries", history.len());
     let mut seen = HashSet::new();
     if args.fzf {
         for (index, entry) in history
@@ -101,14 +107,14 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
         if !args.reverse {
             filtered.reverse();
         }
-        let first = get_index("FIRST", args.first, filtered.len())?.unwrap_or(0);
+        let first = get_index("FIRST", Some(args.first), filtered.len())?.unwrap_or(0);
         let last = get_index("LAST", args.last, filtered.len())?.unwrap_or(filtered.len() - 1);
         debug!("show history from {first} to {last}");
         if !filtered.is_empty() && last < first {
             return Err(Error::Generic(format!(
                 "LAST ({}) must not be before FIRST ({})",
                 args.last.unwrap(),
-                args.first.unwrap()
+                args.first
             )));
         }
         for (index, entry) in filtered {
@@ -133,11 +139,15 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
                         entry.cmd
                     );
                 }
-            } else if args.id {
-                println!("{}\t{}", entry.id, entry.cmd);
-            } else {
-                println!("{}", entry.cmd);
+                continue;
             }
+            if args.number {
+                print!("{:index_size$}\t", index);
+            }
+            if args.id {
+                print!("{:36}\t", entry.id);
+            }
+            println!("{}", entry.cmd);
         }
     }
     Ok(())
@@ -147,6 +157,7 @@ fn get_index(label: &str, idx: Option<isize>, max: usize) -> Result<Option<usize
     match idx {
         Some(0) => Err(Error::Generic(format!("0 is not a valid {label} value"))),
         Some(n) if n < 0 && (((-n) as usize) <= max) => Ok(Some((max as isize + n) as usize)),
+        Some(n) if n < 0 && (((-n) as usize) > max) => Ok(Some(0_usize)),
         Some(n) if n > 0 && ((n as usize) <= max) => Ok(Some((n - 1) as usize)),
         Some(n) => Err(Error::Generic(format!(
             "Can't use {label} of {n} with {max} entries",
