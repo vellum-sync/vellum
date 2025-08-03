@@ -96,6 +96,10 @@ impl Chunk {
     fn push(&mut self, entry: Entry) {
         self.entries.push(entry);
     }
+
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -206,6 +210,56 @@ impl History {
         self.get_active_chunk().push(entry);
         self.rebuild_merged();
         Ok(())
+    }
+
+    pub fn load_entries(&mut self, entries: Vec<Entry>, all_hosts: bool) -> Result<usize> {
+        if all_hosts {
+            return Err(Error::Generic(format!(
+                "Loading from all hosts is currently not implemented"
+            )));
+        }
+
+        let mut current: BTreeMap<Uuid, String> = BTreeMap::new();
+
+        for entry in self.merged.iter() {
+            current.insert(entry.id, entry.cmd.clone());
+        }
+
+        let host = self.host.clone();
+
+        let active = self.get_active_chunk();
+        let before = active.len();
+
+        for entry in entries {
+            debug!("loaded entry: {entry:?}");
+            if entry.host != host {
+                // we only support loading entries for the current host, since
+                // the server only "owns" entries for that host (adding entries
+                // for other hosts would _require_ running a rebuild - since
+                // otherwise we can't update files for other hosts).
+                continue;
+            }
+            match current.get(&entry.id) {
+                None => active.push(entry),
+                Some(cmd) if cmd != &entry.cmd => active.push(entry),
+                _ => (),
+            }
+        }
+
+        let count = active.len() - before;
+        debug!("added {count} new/updated entries");
+
+        if count == 0 {
+            // If there are no new entries, then there is nothing to do
+            return Ok(0);
+        }
+
+        // whilst we are throwing all the "new" entries in the active chunk,
+        // they may be updates, and may be out of order. So we want to rebuild
+        // merged rather than assume that we can append the entries.
+        self.rebuild_merged();
+
+        Ok(count)
     }
 
     pub fn rewrite_all_files<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {

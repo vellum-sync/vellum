@@ -51,6 +51,12 @@ enum Commands {
     /// List all the stored commands
     History(client::HistoryArgs),
 
+    /// Save the current history, by outputting it as JSON
+    Save(client::SaveArgs),
+
+    /// Load saved history
+    Load(client::LoadArgs),
+
     /// Get a single command from the history
     Get(client::GetArgs),
 
@@ -157,6 +163,8 @@ fn main() {
     if let Err(e) = match cli.command {
         Commands::Store { shell_command } => client::store(&config, shell_command),
         Commands::History(args) => client::history(&config, args),
+        Commands::Save(args) => client::save(&config, args),
+        Commands::Load(args) => client::load(&config, args),
         Commands::Get(args) => client::get(&config, args),
         Commands::Move(args) => client::do_move(&config, args),
         Commands::Edit(args) => client::edit(&config, args),

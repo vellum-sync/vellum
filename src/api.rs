@@ -89,6 +89,20 @@ impl Connection {
         self.send(&msg)
     }
 
+    pub fn load(&mut self, history: Vec<Entry>, all_hosts: bool) -> Result<usize> {
+        let msg = Message::Load(history, all_hosts);
+        match self.request(&msg)? {
+            Message::Loaded(count) => Ok(count),
+            Message::Error(e) => Err(Error::Generic(e)),
+            m => Err(Error::Generic(format!("unexpected response: {m:?}"))),
+        }
+    }
+
+    pub fn loaded(&mut self, count: usize) -> Result<()> {
+        let msg = Message::Loaded(count);
+        self.send(&msg)
+    }
+
     pub fn sync(&mut self, force: bool) -> Result<()> {
         let msg = Message::Sync(force);
         match self.request(&msg)? {
@@ -291,6 +305,8 @@ pub enum Message {
     RebuildComplete(Option<String>),
     VersionRequest,
     Version(String),
+    Load(Vec<Entry>, bool),
+    Loaded(usize),
 }
 
 pub fn ping(cfg: &Config, wait: Option<Duration>) -> Result<Connection> {

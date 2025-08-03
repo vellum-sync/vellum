@@ -416,6 +416,15 @@ impl Server {
                     error!("Failed to send ack: {e}");
                 };
             }
+            Message::Load(entries, all_hosts) => {
+                debug!("Received load request ({} entries)", entries.len());
+                if let Err(e) = match self.load(entries, all_hosts) {
+                    Ok(count) => conn.loaded(count),
+                    Err(e) => conn.error(format!("{e}")),
+                } {
+                    error!("Failed to send load response: {e}");
+                }
+            }
             r => {
                 error!("received unknown request: {r:?}");
                 if let Err(e) = conn.error(format!("unknown request: {r:?}")) {
@@ -460,6 +469,11 @@ impl Server {
     fn update(&self, id: Uuid, cmd: String, session: String) -> Result<()> {
         let mut history = self.history.lock().unwrap();
         history.update(id, cmd, session)
+    }
+
+    fn load(&self, entries: Vec<Entry>, all_hosts: bool) -> Result<usize> {
+        let mut history = self.history.lock().unwrap();
+        history.load_entries(entries, all_hosts)
     }
 
     fn rebuild(&self, sender: SyncSender<String>) -> Result<()> {
