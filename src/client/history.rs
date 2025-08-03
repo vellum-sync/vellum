@@ -67,7 +67,7 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
     } else if args.json {
         json_history(cfg, args)
     } else {
-        test_history(cfg, args)
+        text_history(cfg, args)
     }
 }
 
@@ -107,7 +107,7 @@ fn json_history(cfg: &Config, args: HistoryArgs) -> Result<()> {
     Ok(())
 }
 
-fn test_history(cfg: &Config, args: HistoryArgs) -> Result<()> {
+fn text_history(cfg: &Config, args: HistoryArgs) -> Result<()> {
     let filter = Filter::new(args.filter)?;
     let mut conn = server::ensure_ready(cfg)?;
 
