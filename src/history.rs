@@ -4,7 +4,7 @@ use std::{
     env,
     fs::{self, File},
     io::{self, Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use aws_lc_rs::{
@@ -15,7 +15,7 @@ use aws_lc_rs::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::{DateTime, DurationRound, TimeDelta, Utc};
 use itertools::Itertools;
-use log::debug;
+use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -150,26 +150,44 @@ pub fn get_key() -> Result<Vec<u8>> {
     Ok(key)
 }
 
+fn write_chunk(f: &mut File, chunk: &Chunk, key: &[u8]) -> Result<()> {
+    let chunk = EncryptedChunk::encrypt(chunk, key)?;
+    let data = rmp_serde::to_vec(&chunk)?;
+    let len = data.len() as u64;
+    f.write_all(&len.to_be_bytes())?;
+    f.write_all(&data)?;
+    Ok(())
+}
+
 #[derive(Debug)]
 pub struct History {
     host: String,
+    state: PathBuf,
     history: HashMap<String, Vec<Chunk>>,
     merged: Vec<Entry>,
     last_write: DateTime<Utc>,
 }
 
 impl History {
-    fn new<S: Into<String>>(host: S) -> Self {
-        Self {
+    fn new<H: Into<String>, S: AsRef<Path>>(host: H, state: S) -> Result<Self> {
+        let state_dir = state.as_ref();
+        fs::create_dir_all(state_dir)?;
+        let state = Path::new(state.as_ref()).join("history.chunk");
+        Ok(Self {
             host: host.into(),
+            state,
             history: HashMap::new(),
             merged: Vec::new(),
             last_write: Utc::now(),
-        }
+        })
     }
 
-    pub fn load<S: Into<String>, P: AsRef<Path>>(host: S, path: P) -> Result<Self> {
-        let mut s = Self::new(host);
+    pub fn load<H: Into<String>, S: AsRef<Path>, P: AsRef<Path>>(
+        host: H,
+        state: S,
+        path: P,
+    ) -> Result<Self> {
+        let mut s = Self::new(host, state)?;
         s.read(path)?;
         Ok(s)
     }
@@ -177,12 +195,14 @@ impl History {
     pub fn save<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         self.write(path, &self.host)?;
         self.last_write = Utc::now();
+        self.write_active();
         Ok(())
     }
 
     pub fn sync<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         self.write(path.as_ref(), &self.host)?;
         self.last_write = Utc::now();
+        self.write_active();
         self.read(path.as_ref())
     }
 
@@ -194,6 +214,7 @@ impl History {
         let entry = Entry::new(&self.host, cmd, session);
         self.get_active_chunk().push(entry.clone());
         self.merged.push(entry);
+        self.write_active();
     }
 
     pub fn update<I: Into<Uuid>, C: Into<String>, S: Into<String>>(
@@ -209,6 +230,7 @@ impl History {
         let entry = Entry::existing(id, &self.host, cmd, session);
         self.get_active_chunk().push(entry);
         self.rebuild_merged();
+        self.write_active();
         Ok(())
     }
 
@@ -259,6 +281,8 @@ impl History {
         // merged rather than assume that we can append the entries.
         self.rebuild_merged();
 
+        self.write_active();
+
         Ok(count)
     }
 
@@ -271,6 +295,7 @@ impl History {
             self.write(path.as_ref(), host)?;
         }
         self.last_write = Utc::now();
+        self.write_active();
         Ok(())
     }
 
@@ -399,16 +424,32 @@ impl History {
                 .append(true)
                 .create(true)
                 .open(Path::new(&dir).join(day))?;
-            for chunk in chunks.map(|chunk| EncryptedChunk::encrypt(chunk, &key)) {
-                let data = rmp_serde::to_vec(&chunk?)?;
-                let len = data.len() as u64;
-                f.write_all(&len.to_be_bytes())?;
-                f.write_all(&data)?;
+            for chunk in chunks {
+                write_chunk(&mut f, chunk, &key)?;
             }
             f.flush()?;
         }
 
         Ok(())
+    }
+
+    fn try_write_active(&mut self) -> Result<()> {
+        let key = get_key()?;
+
+        let path = self.state.clone();
+        let chunk = self.get_active_chunk();
+
+        let mut f = File::create(path)?;
+        write_chunk(&mut f, chunk, &key)?;
+        f.flush()?;
+
+        Ok(())
+    }
+
+    fn write_active(&mut self) -> () {
+        if let Err(e) = self.try_write_active() {
+            error!("Failed to write active chunk: {e}");
+        }
     }
 
     fn rebuild_merged(&mut self) {

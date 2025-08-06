@@ -208,7 +208,11 @@ impl Server {
 
         let s = Self {
             cfg: cfg.clone(),
-            history: Arc::new(Mutex::new(History::load(host.clone(), path)?)),
+            history: Arc::new(Mutex::new(History::load(
+                host.clone(),
+                cfg.state_dir.clone(),
+                path,
+            )?)),
             host,
             syncer: Arc::new(Mutex::new(syncer)),
         };
