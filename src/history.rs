@@ -5,6 +5,7 @@ use std::{
     fs::{self, File},
     io::{self, Read, Write},
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use aws_lc_rs::{
@@ -193,16 +194,18 @@ impl History {
     }
 
     pub fn save<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.write(path, &self.host)?;
-        self.last_write = Utc::now();
-        self.write_active();
+        if self.write(path, &self.host)? {
+            self.last_write = Utc::now();
+            self.write_active();
+        }
         Ok(())
     }
 
     pub fn sync<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.write(path.as_ref(), &self.host)?;
-        self.last_write = Utc::now();
-        self.write_active();
+        if self.write(path.as_ref(), &self.host)? {
+            self.last_write = Utc::now();
+            self.write_active();
+        }
         self.read(path.as_ref())
     }
 
@@ -398,16 +401,18 @@ impl History {
         Ok(added)
     }
 
-    fn write<P: AsRef<Path>>(&self, path: P, host: &str) -> Result<()> {
+    fn write<P: AsRef<Path>>(&self, path: P, host: &str) -> Result<bool> {
         let key = get_key()?;
 
         // First we need to make sure that there is actually anything to write.
         let chunks = match self.history.get(host) {
             Some(c) => c,
-            None => return Ok(()),
+            None => return Ok(false),
         };
 
         debug!("We have {} total chunks", chunks.len());
+
+        let mut entries = 0;
 
         // make sure host directory exists
         let dir = Path::new(path.as_ref()).join(host);
@@ -415,7 +420,7 @@ impl History {
 
         for (day, chunks) in chunks
             .iter()
-            .filter(|chunk| chunk.start > self.last_write)
+            .filter(|chunk| chunk.start > self.last_write && !chunk.entries.is_empty())
             .chunk_by(|chunk| format!("{}", chunk.start.format("%Y-%m-%d")))
             .into_iter()
         {
@@ -425,12 +430,16 @@ impl History {
                 .create(true)
                 .open(Path::new(&dir).join(day))?;
             for chunk in chunks {
+                entries += chunk.entries.len();
                 write_chunk(&mut f, chunk, &key)?;
             }
             f.flush()?;
         }
 
-        Ok(())
+        debug!("Wrote total of {entries} new entries");
+
+        // only return true if any entries were written to disk
+        Ok(entries > 0)
     }
 
     fn try_write_active(&mut self) -> Result<()> {
