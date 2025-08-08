@@ -45,6 +45,12 @@ pub struct Sync {
     #[serde(with = "humantime_serde")]
     pub interval: Duration,
 
+    /// How long after the last sync will the watchdog consider the sync to be
+    /// broken, and exit the process?
+    #[serde(default = "default_watchdog_timeout")]
+    #[serde(with = "humantime_serde")]
+    pub watchdog_timeout: Duration,
+
     /// Path of the sync git checkout, non-absolute paths are relative to the
     /// state directory.
     #[serde(default = "default_sync_path")]
@@ -116,6 +122,7 @@ impl Default for Sync {
             url: "".to_string(),
             ssh_key: "".to_string(),
             interval: default_sync_interval(),
+            watchdog_timeout: default_watchdog_timeout(),
             path: default_sync_path(),
         }
     }
@@ -148,6 +155,10 @@ fn default_sync_enabled() -> bool {
 
 fn default_sync_interval() -> Duration {
     Duration::from_secs(30)
+}
+
+fn default_watchdog_timeout() -> Duration {
+    Duration::from_secs(300)
 }
 
 fn default_sync_path() -> PathBuf {

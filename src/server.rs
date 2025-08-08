@@ -14,12 +14,12 @@ use std::{
     time::Duration,
 };
 
-use chrono::{DurationRound, TimeDelta, Utc};
+use chrono::{DateTime, DurationRound, TimeDelta, Utc};
 use clap::{self, crate_version};
 use fd_lock::RwLock;
 use fork::{Fork, daemon};
 use humantime::format_duration;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use rand::random_range;
 use signal_hook::{consts::TERM_SIGNALS, flag, iterator::Signals};
 use uuid::Uuid;
@@ -194,6 +194,7 @@ struct Server {
     // NOTE: syncer should always be locked before history.
     syncer: Arc<Mutex<Box<dyn Syncer>>>,
     history: Arc<Mutex<History>>,
+    last_sync: Arc<Mutex<DateTime<Utc>>>,
 }
 
 impl Server {
@@ -215,6 +216,7 @@ impl Server {
             )?)),
             host,
             syncer: Arc::new(Mutex::new(syncer)),
+            last_sync: Arc::new(Mutex::new(Utc::now())),
         };
         s.start_background_sync();
 
@@ -228,6 +230,8 @@ impl Server {
         }
         let s = self.clone();
         thread::spawn(move || s.background_sync());
+        let s = self.clone();
+        thread::spawn(move || s.sync_watchdog());
     }
 
     fn background_sync(&self) {
@@ -268,6 +272,42 @@ impl Server {
             thread::sleep(wait);
             if let Err(e) = self.sync(false) {
                 error!("Failed to run background sync: {e}");
+            }
+            // It doesn't matter if the sync was successful or not, all the
+            // watchdog cares about is that the sync didn't get stuck, so we
+            // always update the time, regardless of result.
+            if let Ok(mut last_sync) = self.last_sync.try_lock() {
+                *last_sync = Utc::now();
+            }
+        }
+    }
+
+    fn sync_watchdog(&self) {
+        let interval = Duration::from_secs(10);
+        debug!(
+            "starting sync watchdog with {interval:?} interval, and {:?} timeout",
+            self.cfg.sync.watchdog_timeout
+        );
+        loop {
+            thread::sleep(interval);
+            let time_since_sync = {
+                let last_sync = self.last_sync.lock().unwrap();
+                let delta = Utc::now() - *last_sync;
+                delta.to_std().unwrap()
+            };
+            debug!("Sync Watchdog: Time since last sync: {time_since_sync:?}");
+            if time_since_sync > self.cfg.sync.interval {
+                warn!(
+                    "Last sync was {time_since_sync:?} ago, which is more than the interval of {:?}",
+                    self.cfg.sync.interval
+                );
+            }
+            if time_since_sync > self.cfg.sync.watchdog_timeout {
+                error!(
+                    "Last sync was {time_since_sync:?} ago, which is more than the watchdog timeout of {:?}, exiting",
+                    self.cfg.sync.watchdog_timeout
+                );
+                exit(1);
             }
         }
     }
