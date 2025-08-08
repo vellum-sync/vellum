@@ -190,6 +190,7 @@ impl History {
     ) -> Result<Self> {
         let mut s = Self::new(host, state)?;
         s.read(path)?;
+        s.read_active_chunk()?;
         Ok(s)
     }
 
@@ -399,6 +400,67 @@ impl History {
         debug!("added={added}");
 
         Ok(added)
+    }
+
+    fn read_active_chunk(&mut self) -> Result<()> {
+        let chunks = self.history.entry(self.host.clone()).or_default();
+
+        // this function should never be called when there is already an active chunk.
+        if let Some(last) = chunks.last() {
+            if last.start > self.last_write {
+                return Err(Error::Generic(format!(
+                    "read_active_chunk called, but there is already an active chunk!"
+                )));
+            }
+        }
+
+        let key = get_key()?;
+        let path = self.state.clone();
+
+        debug!("load active chunks from {:?}", path);
+
+        let mut f = HistoryFile::open(path)?;
+
+        let chunk = match f.read()? {
+            Some(e) => e.decrypt(&key)?,
+            None => return Ok(()),
+        };
+
+        debug!(
+            "found active chunk from {} with {} entries",
+            chunk.start,
+            chunk.entries.len()
+        );
+
+        let mut added = chunk.entries.len();
+
+        // we need to make sure that last_write is before the time in the first
+        // chunk from the active file, since it hasn't be synced yet - so we
+        // want the next sync to consider it new.
+        self.last_write = chunk.start - Duration::from_secs(1);
+
+        chunks.push(chunk);
+
+        // there should only ever be one chunk in the active chunk file, but if
+        // there are any extra chunks, load them too.
+        while let Some(e) = f.read()? {
+            let chunk = e.decrypt(&key)?;
+            debug!(
+                "found active chunk from {} with {} entries",
+                chunk.start,
+                chunk.entries.len()
+            );
+            added += chunk.entries.len();
+            chunks.push(chunk);
+        }
+
+        if added > 0 {
+            // if we have loaded any active chunks then we need to rebuild the
+            // merged list.
+            self.rebuild_merged();
+        }
+
+        Ok(())
     }
 
     fn write<P: AsRef<Path>>(&self, path: P, host: &str) -> Result<bool> {
