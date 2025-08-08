@@ -2,7 +2,7 @@ use std::{
     cmp::Ordering,
     collections::{BTreeMap, HashMap},
     env,
-    fs::{self, File},
+    fs::{self, File, exists},
     io::{self, Read, Write},
     path::{Path, PathBuf},
     time::Duration,
@@ -414,11 +414,16 @@ impl History {
             }
         }
 
-        let key = get_key()?;
         let path = self.state.clone();
 
-        debug!("load active chunks from {:?}", path);
+        if !exists(&path)? {
+            debug!("active chunk file {path:?} not found, skipping active chunks load");
+            return Ok(());
+        }
 
+        debug!("load active chunks from {path:?}");
+
+        let key = get_key()?;
         let mut f = HistoryFile::open(path)?;
 
         let chunk = match f.read()? {
