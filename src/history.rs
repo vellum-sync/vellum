@@ -468,7 +468,7 @@ impl History {
         }
 
         if added > 0 {
-            // if we have loaded any active chunks then we need to rebuild the
+            // if we have loaded any entries then we need to rebuild the
             // merged list.
             self.rebuild_merged();
         }
