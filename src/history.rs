@@ -195,18 +195,16 @@ impl History {
     }
 
     pub fn save<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        if self.write(path, &self.host)? {
-            self.last_write = Utc::now();
-            self.write_active();
-        }
+        self.write(path, &self.host)?;
+        self.last_write = Utc::now();
+        self.write_active();
         Ok(())
     }
 
     pub fn sync<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        if self.write(path.as_ref(), &self.host)? {
-            self.last_write = Utc::now();
-            self.write_active();
-        }
+        self.write(path.as_ref(), &self.host)?;
+        self.last_write = Utc::now();
+        self.write_active();
         self.read(path.as_ref())
     }
 
@@ -301,6 +299,16 @@ impl History {
         self.last_write = Utc::now();
         self.write_active();
         Ok(())
+    }
+
+    fn active_chunk(&mut self) -> Option<&mut Chunk> {
+        let chunks = self.history.entry(self.host.clone()).or_default();
+        // create a new chunk if chunks is empty, or if the most recent chunk
+        // has already been written.
+        match chunks.last_mut() {
+            Some(last) if last.start > self.last_write => Some(last),
+            _ => None,
+        }
     }
 
     fn get_active_chunk(&mut self) -> &mut Chunk {
@@ -468,13 +476,13 @@ impl History {
         Ok(())
     }
 
-    fn write<P: AsRef<Path>>(&self, path: P, host: &str) -> Result<bool> {
+    fn write<P: AsRef<Path>>(&self, path: P, host: &str) -> Result<()> {
         let key = get_key()?;
 
         // First we need to make sure that there is actually anything to write.
         let chunks = match self.history.get(host) {
             Some(c) => c,
-            None => return Ok(false),
+            None => return Ok(()),
         };
 
         debug!("We have {} total chunks", chunks.len());
@@ -505,20 +513,19 @@ impl History {
 
         debug!("Wrote total of {entries} new entries");
 
-        // only return true if any entries were written to disk
-        Ok(entries > 0)
+        Ok(())
     }
 
     fn try_write_active(&mut self) -> Result<()> {
         let key = get_key()?;
-
         let path = self.state.clone();
-        let chunk = self.get_active_chunk();
-
         let mut f = File::create(path)?;
-        write_chunk(&mut f, chunk, &key)?;
-        f.flush()?;
 
+        if let Some(chunk) = self.active_chunk() {
+            write_chunk(&mut f, chunk, &key)?;
+        }
+
+        f.flush()?;
         Ok(())
     }
 
