@@ -23,13 +23,17 @@ pub trait LockedSyncer: fmt::Debug {
     fn unlock(&self) -> Result<()>;
 }
 
-pub fn get_syncer(cfg: &Config) -> Result<Box<dyn Syncer>> {
+pub fn get_syncer(cfg: &Config) -> Result<(Box<dyn Syncer>, PathBuf)> {
     if cfg.sync.enabled {
         debug!("Using git Syncer");
-        Ok(Box::new(git::Git::new(cfg)?))
+        let s = git::Git::new(cfg)?;
+        let path = s.path();
+        Ok((Box::new(s), path))
     } else {
         debug!("Using local Syncer");
         let path = cfg.sync_path();
-        Ok(Box::new(local::Local::new(&path)?))
+        let s = local::Local::new(&path)?;
+        let path = s.path();
+        Ok((Box::new(s), path))
     }
 }

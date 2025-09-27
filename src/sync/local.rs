@@ -19,6 +19,10 @@ impl Local {
             path: path.as_ref().into(),
         })
     }
+
+    pub(super) fn path(&self) -> PathBuf {
+        self.path.clone()
+    }
 }
 
 impl Syncer for Local {

@@ -203,9 +203,7 @@ impl Server {
         debug!("server: config={cfg:?} pid={pid}");
 
         let host = cfg.hostname.to_string_lossy().to_string();
-        let syncer = get_syncer(cfg)?;
-
-        let path = syncer.refresh()?;
+        let (syncer, path) = get_syncer(cfg)?;
 
         let s = Self {
             cfg: cfg.clone(),
@@ -225,7 +223,10 @@ impl Server {
 
     fn start_background_sync(&self) {
         if self.cfg.sync.interval.is_zero() {
-            // don't start background sync if interval is zero
+            // don't start full background sync if interval is zero, just run a
+            // single initial sync instead
+            let s = self.clone();
+            thread::spawn(move || s.initial_sync());
             return;
         }
         let s = self.clone();
@@ -234,11 +235,30 @@ impl Server {
         thread::spawn(move || s.sync_watchdog());
     }
 
+    fn initial_sync(&self) {
+        debug!("perform initial sync");
+        if let Err(e) = self.sync(false) {
+            error!("Failed to run initial sync: {e}");
+        }
+    }
+
     fn background_sync(&self) {
+        debug!("perform initial sync");
+        if let Err(e) = self.sync(false) {
+            error!("Failed to run initial sync: {e}");
+        }
+        // It doesn't matter if the sync was successful or not, all the
+        // watchdog cares about is that the sync didn't get stuck, so we
+        // always update the time, regardless of result.
+        if let Ok(mut last_sync) = self.last_sync.try_lock() {
+            *last_sync = Utc::now();
+        }
+
         debug!(
             "starting background sync with {:?} interval",
             self.cfg.sync.interval
         );
+
         let interval = match TimeDelta::from_std(self.cfg.sync.interval) {
             Ok(i) => i,
             Err(e) => {
@@ -246,12 +266,14 @@ impl Server {
                 exit(1)
             }
         };
+
         let offset = random_range(0..interval.num_nanoseconds().unwrap());
         let offset = TimeDelta::nanoseconds(offset);
         debug!(
             "random offset is: {}",
             format_duration(offset.to_std().unwrap())
         );
+
         loop {
             let next = match Utc::now().duration_round_up(interval) {
                 Ok(n) => n,

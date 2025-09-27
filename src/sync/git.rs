@@ -31,6 +31,10 @@ pub struct Git {
 }
 
 impl Git {
+    pub(super) fn path(&self) -> PathBuf {
+        Path::new(&self.path).join("hosts")
+    }
+
     fn existing(cfg: &Config) -> Result<Self> {
         let path = cfg.sync_path();
         let repo = Repository::open(&path)?;
