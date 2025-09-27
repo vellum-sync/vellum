@@ -304,9 +304,11 @@ impl Server {
             }
             if time_since_sync > self.cfg.sync.watchdog_timeout {
                 error!(
-                    "Last sync was {time_since_sync:?} ago, which is more than the watchdog timeout of {:?}, exiting",
+                    "Last sync was {time_since_sync:?} ago, which is more than the watchdog timeout of {:?}, restarting",
                     self.cfg.sync.watchdog_timeout
                 );
+                background(&self.cfg, false);
+                // background shouldn't return
                 exit(1);
             }
         }

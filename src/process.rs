@@ -1,6 +1,7 @@
 use std::{
     fs::{exists, read_to_string},
     path::Path,
+    process,
 };
 
 use log::debug;
@@ -16,7 +17,8 @@ pub fn server_is_running(cfg: &Config) -> Result<bool> {
     }
     let raw_pid = read_pid_file(pid_file)?;
     debug!("Got server pid: {raw_pid}");
-    if raw_pid == 0 {
+    if raw_pid == 0 || raw_pid == process::id() {
+        // not running, or re-execing in the same process
         return Ok(false);
     }
     let pid = Pid::from_u32(raw_pid);
