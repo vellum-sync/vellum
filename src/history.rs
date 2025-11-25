@@ -28,24 +28,32 @@ pub struct Entry {
     pub ts: DateTime<Utc>,
     pub host: String,
     pub cmd: String,
+    // #[serde(default)]
+    // pub path: String,
     pub session: String,
 }
 
 impl Entry {
-    fn new<H: Into<String>, C: Into<String>, S: Into<String>>(host: H, cmd: C, session: S) -> Self {
-        Self {
-            id: Uuid::now_v7(),
-            ts: Utc::now(),
-            host: host.into(),
-            cmd: cmd.into(),
-            session: session.into(),
-        }
+    fn new<H: Into<String>, C: Into<String>, P: Into<String>, S: Into<String>>(
+        host: H,
+        cmd: C,
+        path: P,
+        session: S,
+    ) -> Self {
+        Self::existing(Uuid::now_v7(), host, cmd, path, session)
     }
 
-    fn existing<I: Into<Uuid>, H: Into<String>, C: Into<String>, S: Into<String>>(
+    fn existing<
+        I: Into<Uuid>,
+        H: Into<String>,
+        C: Into<String>,
+        P: Into<String>,
+        S: Into<String>,
+    >(
         id: I,
         host: H,
         cmd: C,
+        path: P,
         session: S,
     ) -> Self {
         Self {
@@ -53,6 +61,7 @@ impl Entry {
             ts: Utc::now(),
             host: host.into(),
             cmd: cmd.into(),
+            // path: path.into(),
             session: session.into(),
         }
     }
@@ -103,8 +112,12 @@ impl Chunk {
     }
 }
 
+const CURRENT_CHUNK_VERSION: u8 = 0;
+
 #[derive(Debug, Serialize, Deserialize)]
 struct EncryptedChunk {
+    #[serde(skip)]
+    version: u8,
     start: DateTime<Utc>,
     #[serde(with = "serde_bytes")]
     nonce: Vec<u8>,
@@ -118,6 +131,7 @@ impl EncryptedChunk {
         let mut data = rmp_serde::to_vec(&chunk.entries)?;
         let nonce = key.seal_in_place_append_tag(Aad::empty(), &mut data)?;
         Ok(Self {
+            version: CURRENT_CHUNK_VERSION,
             start: chunk.start,
             nonce: nonce.as_ref().into(),
             data,
@@ -157,7 +171,8 @@ fn write_chunk(f: &mut File, chunk: &Chunk, key: &[u8]) -> Result<()> {
     let chunk = EncryptedChunk::encrypt(chunk, key)?;
     let data = rmp_serde::to_vec(&chunk)?;
     let len = data.len() as u64;
-    f.write_all(&len.to_be_bytes())?;
+    let header = len | ((chunk.version as u64) << 56);
+    f.write_all(&header.to_be_bytes())?;
     f.write_all(&data)?;
     Ok(())
 }
@@ -215,7 +230,7 @@ impl History {
     }
 
     pub fn add<C: Into<String>, S: Into<String>>(&mut self, cmd: C, session: S) {
-        let entry = Entry::new(&self.host, cmd, session);
+        let entry = Entry::new(&self.host, cmd, "", session);
         self.get_active_chunk().push(entry.clone());
         self.merged.push(entry);
         self.write_active();
@@ -231,7 +246,7 @@ impl History {
         if !self.merged.iter().any(|entry| entry.id == id) {
             return Err(Error::Generic(format!("unknown ID: {id}")));
         }
-        let entry = Entry::existing(id, &self.host, cmd, session);
+        let entry = Entry::existing(id, &self.host, cmd, "", session);
         self.get_active_chunk().push(entry);
         self.rebuild_merged();
         self.write_active();
@@ -636,12 +651,16 @@ impl HistoryFile {
             read += n
         }
 
-        let len = u64::from_be_bytes(buf);
+        let header = u64::from_be_bytes(buf);
+        let len = header & 0x00ffffffffffffff;
 
         let mut data = vec![0u8; len as usize];
         self.f.read_exact(&mut data)?;
 
-        Ok(Some(rmp_serde::from_slice(&data)?))
+        let mut chunk: EncryptedChunk = rmp_serde::from_slice(&data)?;
+        chunk.version = ((header & 0xff00000000000000) >> 56) as u8;
+
+        Ok(Some(chunk))
     }
 }
 
