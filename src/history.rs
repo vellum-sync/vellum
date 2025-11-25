@@ -106,7 +106,9 @@ impl Chunk {
 #[derive(Debug, Serialize, Deserialize)]
 struct EncryptedChunk {
     start: DateTime<Utc>,
+    #[serde(with = "serde_bytes")]
     nonce: Vec<u8>,
+    #[serde(with = "serde_bytes")]
     data: Vec<u8>,
 }
 
