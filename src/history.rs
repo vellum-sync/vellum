@@ -28,8 +28,7 @@ pub struct Entry {
     pub ts: DateTime<Utc>,
     pub host: String,
     pub cmd: String,
-    // #[serde(default)]
-    // pub path: String,
+    pub path: String,
     pub session: String,
 }
 
@@ -61,7 +60,7 @@ impl Entry {
             ts: Utc::now(),
             host: host.into(),
             cmd: cmd.into(),
-            // path: path.into(),
+            path: path.into(),
             session: session.into(),
         }
     }
@@ -103,6 +102,13 @@ impl Chunk {
         }
     }
 
+    fn read(start: DateTime<Utc>, data: &[u8]) -> Result<Self> {
+        Ok(Self {
+            start,
+            entries: rmp_serde::from_slice(data)?,
+        })
+    }
+
     fn push(&mut self, entry: Entry) {
         self.entries.push(entry);
     }
@@ -112,7 +118,7 @@ impl Chunk {
     }
 }
 
-const CURRENT_CHUNK_VERSION: u8 = 0;
+const CURRENT_CHUNK_VERSION: u8 = 1;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct EncryptedChunk {
@@ -142,10 +148,11 @@ impl EncryptedChunk {
         let key = RandomizedNonceKey::new(&AES_256_GCM, key)?;
         let nonce = Nonce::try_assume_unique_for_key(&self.nonce)?;
         let data = key.open_in_place(nonce, Aad::empty(), &mut self.data)?;
-        Ok(Chunk {
-            start: self.start,
-            entries: rmp_serde::from_slice(data)?,
-        })
+        match self.version {
+            0 => v0::read(self.start, data),
+            CURRENT_CHUNK_VERSION => Chunk::read(self.start, data),
+            v => Err(Error::Generic(format!("Invalid Chunk version: {v}"))),
+        }
     }
 }
 
@@ -682,5 +689,48 @@ impl Iterator for HistoryFile {
                 Some(Err(e))
             }
         }
+    }
+}
+
+mod v0 {
+    use chrono::{DateTime, Utc};
+    use serde::{Deserialize, Serialize};
+    use uuid::Uuid;
+
+    use crate::error::Result;
+
+    use super::Chunk;
+
+    #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
+    pub struct Entry {
+        pub id: Uuid,
+        pub ts: DateTime<Utc>,
+        pub host: String,
+        pub cmd: String,
+        pub session: String,
+    }
+
+    impl Entry {
+        fn convert(self) -> Result<super::Entry> {
+            Ok(super::Entry {
+                id: self.id,
+                ts: self.ts,
+                host: self.host,
+                cmd: self.cmd,
+                path: "".to_string(),
+                session: self.session,
+            })
+        }
+    }
+
+    pub(super) fn read(start: DateTime<Utc>, data: &[u8]) -> Result<Chunk> {
+        let entries: Vec<Entry> = rmp_serde::from_slice(data)?;
+        Ok(super::Chunk {
+            start,
+            entries: entries
+                .into_iter()
+                .map(|e| e.convert())
+                .collect::<Result<_>>()?,
+        })
     }
 }
