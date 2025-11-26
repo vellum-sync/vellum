@@ -22,6 +22,42 @@ pub struct Connection {
     s: UnixStream,
 }
 
+// This version is used to detect major incompatible changes to the API. It
+// should only be changed when major changes are made, in particular changes
+// that would cause miscommunication instead of errors, as it will prevent the
+// client from talking to the server at all. Most changes to the API should be
+// able to handled by decoder errors (e.g. adding a new command, or changing the
+// parameters of an existing command).
+const CURRENT_API_VERSION: u32 = 1;
+
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Message {
+    Ack,
+    Store {
+        cmd: String,
+        session: String,
+    },
+    Error(String),
+    HistoryRequest,
+    History(Vec<Entry>),
+    Sync(bool),
+    Exit(bool),
+    Ping,
+    Pong(u32),
+    Update {
+        id: Uuid,
+        cmd: String,
+        session: String,
+    },
+    Rebuild,
+    RebuildStatus(String),
+    RebuildComplete(Option<String>),
+    VersionRequest,
+    Version(String),
+    Load(Vec<Entry>, bool),
+    Loaded(usize),
+}
+
 impl Connection {
     pub fn new(cfg: &Config) -> Result<Self> {
         let path = Path::new(&cfg.state_dir).join("server.sock");
@@ -134,14 +170,15 @@ impl Connection {
     pub fn ping(&mut self) -> Result<()> {
         let msg = Message::Ping;
         match self.request(&msg)? {
-            Message::Pong => Ok(()),
+            Message::Pong(CURRENT_API_VERSION) => Ok(()),
+            Message::Pong(version) => Err(Error::ApiVersion(version)),
             Message::Error(e) => Err(Error::Generic(e)),
             m => Err(Error::Generic(format!("unexpected response: {m:?}"))),
         }
     }
 
     pub fn pong(&mut self) -> Result<()> {
-        let msg = Message::Pong;
+        let msg = Message::Pong(CURRENT_API_VERSION);
         self.send(&msg)
     }
 
@@ -281,34 +318,6 @@ impl Iterator for Rebuilder<'_> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum Message {
-    Ack,
-    Store {
-        cmd: String,
-        session: String,
-    },
-    Error(String),
-    HistoryRequest,
-    History(Vec<Entry>),
-    Sync(bool),
-    Exit(bool),
-    Ping,
-    Pong,
-    Update {
-        id: Uuid,
-        cmd: String,
-        session: String,
-    },
-    Rebuild,
-    RebuildStatus(String),
-    RebuildComplete(Option<String>),
-    VersionRequest,
-    Version(String),
-    Load(Vec<Entry>, bool),
-    Loaded(usize),
-}
-
 pub fn ping(cfg: &Config, wait: Option<Duration>) -> Result<Connection> {
     let start = Instant::now();
     loop {
@@ -317,7 +326,13 @@ pub fn ping(cfg: &Config, wait: Option<Duration>) -> Result<Connection> {
                 debug!("took {:?} to get response from server", start.elapsed());
                 return Ok(conn);
             }
+            Err(Error::ApiVersion(v)) => {
+                return Err(Error::Generic(format!(
+                    "Wrong API Version {v} (wanted {CURRENT_API_VERSION})"
+                )));
+            }
             Err(e) => {
+                debug!("try_ping returned error: {e}");
                 if wait.is_none() {
                     return Err(e);
                 }

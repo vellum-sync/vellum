@@ -32,6 +32,7 @@ pub enum Error {
     ParseInt(ParseIntError),
     ParseTime(chrono::ParseError),
     Rounding(chrono::RoundingError),
+    ApiVersion(u32),
 }
 
 impl Error {
@@ -61,6 +62,7 @@ impl Display for Error {
             Self::ParseInt(e) => write!(f, "PARSE INT ERROR: {e}"),
             Self::ParseTime(e) => write!(f, "PARSE TIME ERROR: {e}"),
             Self::Rounding(e) => write!(f, "ROUNDING ERROR: {e}"),
+            Self::ApiVersion(v) => write!(f, "WRONG API VERSION: {v}"),
         }
     }
 }
@@ -86,6 +88,7 @@ impl error::Error for Error {
             Self::ParseInt(e) => Some(e),
             Self::ParseTime(e) => Some(e),
             Self::Rounding(e) => Some(e),
+            Self::ApiVersion(_) => None,
         }
     }
 }
