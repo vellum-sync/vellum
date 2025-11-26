@@ -399,9 +399,9 @@ impl Server {
 
     fn handle_request(&self, req: Message, conn: &mut Connection) {
         match req {
-            Message::Store { cmd, session } => {
+            Message::Store { cmd, path, session } => {
                 debug!("Received request from session {session} to store command: {cmd}");
-                self.store(cmd, session);
+                self.store(cmd, path, session);
                 if let Err(e) = conn.ack() {
                     error!("Failed to send ack: {e}");
                 };
@@ -502,9 +502,9 @@ impl Server {
         }
     }
 
-    fn store(&self, cmd: String, session: String) {
+    fn store(&self, cmd: String, path: String, session: String) {
         let mut history = self.history.lock().unwrap();
-        history.add(cmd, session);
+        history.add(cmd, path, session);
     }
 
     fn history(&self) -> Vec<Entry> {

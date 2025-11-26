@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{env::current_dir, time::Duration};
 
 use clap::crate_version;
 use log::{debug, info};
@@ -8,7 +8,7 @@ use uuid::Uuid;
 use crate::{
     api::{self, Connection},
     config::Config,
-    error::Result,
+    error::{Error, Result},
     process::{server_is_running, wait_for_server_exit},
     server,
 };
@@ -36,8 +36,12 @@ pub fn store(cfg: &Config, cmd: String) -> Result<()> {
     if cmd.is_empty() {
         return Ok(());
     }
+    let path = current_dir()?
+        .to_str()
+        .ok_or_else(|| Error::from_str("failed to convert current directory to string"))?
+        .to_owned();
     let mut conn = server::ensure_ready(cfg)?;
-    conn.store(cmd, Session::get()?.id)
+    conn.store(cmd, path, Session::get()?.id)
 }
 
 pub fn stop_server(cfg: &Config, no_sync: bool) -> Result<()> {

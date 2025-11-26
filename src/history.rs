@@ -236,8 +236,13 @@ impl History {
         self.merged.clone()
     }
 
-    pub fn add<C: Into<String>, S: Into<String>>(&mut self, cmd: C, session: S) {
-        let entry = Entry::new(&self.host, cmd, "", session);
+    pub fn add<C: Into<String>, P: Into<String>, S: Into<String>>(
+        &mut self,
+        cmd: C,
+        path: P,
+        session: S,
+    ) {
+        let entry = Entry::new(&self.host, cmd, path, session);
         self.get_active_chunk().push(entry.clone());
         self.merged.push(entry);
         self.write_active();

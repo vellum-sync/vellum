@@ -39,7 +39,7 @@ pub fn import(cfg: &Config, args: ImportArgs) -> Result<()> {
 
     for line in reader.lines() {
         let line = line?;
-        conn.store(line, session.clone())?;
+        conn.store(line, "".to_string(), session.clone())?;
     }
     Ok(())
 }

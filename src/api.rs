@@ -35,6 +35,7 @@ pub enum Message {
     Ack,
     Store {
         cmd: String,
+        path: String,
         session: String,
     },
     Error(String),
@@ -102,8 +103,8 @@ impl Connection {
         Ok(rmp_serde::from_slice(&data)?)
     }
 
-    pub fn store(&mut self, cmd: String, session: String) -> Result<()> {
-        let msg = Message::Store { cmd, session };
+    pub fn store(&mut self, cmd: String, path: String, session: String) -> Result<()> {
+        let msg = Message::Store { cmd, path, session };
         match self.request(&msg)? {
             Message::Ack => Ok(()),
             Message::Error(e) => Err(Error::Generic(e)),
