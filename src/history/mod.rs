@@ -1,8 +1,8 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    fs::{self, File, exists},
+    fs::{self, File},
     io::Write,
-    path::{Path, PathBuf},
+    path::Path,
     time::Duration,
 };
 
@@ -15,13 +15,13 @@ use crate::error::{Error, Result};
 
 mod store;
 
-use store::{Chunk, HistoryFile, write_chunk};
+use store::{Chunk, HistoryFile, Store, write_chunk};
 pub use store::{Entry, generate_key, get_key};
 
 #[derive(Debug)]
 pub struct History {
     host: String,
-    state: PathBuf,
+    store: Store,
     history: HashMap<String, Vec<Chunk>>,
     merged: Vec<Entry>,
     last_write: DateTime<Utc>,
@@ -29,12 +29,9 @@ pub struct History {
 
 impl History {
     fn new<H: Into<String>, S: AsRef<Path>>(host: H, state: S) -> Result<Self> {
-        let state_dir = state.as_ref();
-        fs::create_dir_all(state_dir)?;
-        let state = Path::new(state.as_ref()).join("history.chunk");
         Ok(Self {
             host: host.into(),
-            state,
+            store: Store::new(state)?,
             history: HashMap::new(),
             merged: Vec::new(),
             last_write: Utc::now(),
@@ -55,14 +52,14 @@ impl History {
     pub fn save<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         self.write(path, &self.host)?;
         self.last_write = Utc::now();
-        self.write_active();
+        self.write_active_chunk();
         Ok(())
     }
 
     pub fn sync<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         self.write(path.as_ref(), &self.host)?;
         self.last_write = Utc::now();
-        self.write_active();
+        self.write_active_chunk();
         self.read(path.as_ref())
     }
 
@@ -79,7 +76,7 @@ impl History {
         let entry = Entry::new(&self.host, cmd, path, session);
         self.get_active_chunk().push(entry.clone());
         self.merged.push(entry);
-        self.write_active();
+        self.write_active_chunk();
     }
 
     pub fn update<I: Into<Uuid>, C: Into<String>, S: Into<String>>(
@@ -95,7 +92,7 @@ impl History {
         let entry = Entry::existing(id, &self.host, cmd, "", session);
         self.get_active_chunk().push(entry);
         self.rebuild_merged();
-        self.write_active();
+        self.write_active_chunk();
         Ok(())
     }
 
@@ -146,7 +143,7 @@ impl History {
         // merged rather than assume that we can append the entries.
         self.rebuild_merged();
 
-        self.write_active();
+        self.write_active_chunk();
 
         Ok(count)
     }
@@ -160,17 +157,17 @@ impl History {
             self.write(path.as_ref(), host)?;
         }
         self.last_write = Utc::now();
-        self.write_active();
+        self.write_active_chunk();
         Ok(())
     }
 
-    fn active_chunk(&mut self) -> Option<&mut Chunk> {
-        let chunks = self.history.entry(self.host.clone()).or_default();
-        // create a new chunk if chunks is empty, or if the most recent chunk
-        // has already been written.
-        match chunks.last_mut() {
-            Some(last) if last.start > self.last_write => Some(last),
-            _ => None,
+    fn active_chunk(&self) -> Option<&Chunk> {
+        match self.history.get(&self.host) {
+            Some(chunks) => match chunks.last() {
+                Some(last) if last.start > self.last_write => Some(last),
+                _ => None,
+            },
+            None => None,
         }
     }
 
@@ -285,50 +282,27 @@ impl History {
             }
         }
 
-        let path = self.state.clone();
+        let chunks = self.store.read_state()?;
 
-        if !exists(&path)? {
-            debug!("active chunk file {path:?} not found, skipping active chunks load");
+        if chunks.len() == 0 {
+            // there was nothing read, so we are done.
             return Ok(());
         }
 
-        debug!("load active chunks from {path:?}");
-
-        let key = get_key()?;
-        let mut f = HistoryFile::open(path)?;
-
-        let chunk = match f.read()? {
-            Some(e) => e.decrypt(&key)?,
-            None => return Ok(()),
-        };
-
-        debug!(
-            "found active chunk from {} with {} entries",
-            chunk.start,
-            chunk.entries.len()
-        );
-
-        let mut added = chunk.entries.len();
-
-        // we need to make sure that last_write is before the time in the first
+        // We need to make sure that last_write is before the time in the first
         // chunk from the active file, since it hasn't be synced yet - so we
         // want the next sync to consider it new.
-        self.last_write = chunk.start - Duration::from_secs(1);
+        self.last_write = chunks[0].start - Duration::from_secs(1);
 
-        chunks.push(chunk);
+        // Iterate the chunks and add up the number of entries before we merge
+        // them into the host's chunk list.
+        let added: usize = chunks.iter().map(|chunk| chunk.entries.len()).sum();
 
-        // there should only ever be one chunk in the active chunk file, but if
-        // there are any extra chunks, load them too.
-        while let Some(e) = f.read()? {
-            let chunk = e.decrypt(&key)?;
-            debug!(
-                "found active chunk from {} with {} entries",
-                chunk.start,
-                chunk.entries.len()
-            );
-            added += chunk.entries.len();
-            chunks.push(chunk);
-        }
+        // Sort the loaded chunks in the active chunk, creating it if needed.
+        self.history
+            .entry(self.host.clone())
+            .or_default()
+            .extend(chunks);
 
         if added > 0 {
             // if we have loaded any entries then we need to rebuild the
@@ -379,21 +353,8 @@ impl History {
         Ok(())
     }
 
-    fn try_write_active(&mut self) -> Result<()> {
-        let key = get_key()?;
-        let path = self.state.clone();
-        let mut f = File::create(path)?;
-
-        if let Some(chunk) = self.active_chunk() {
-            write_chunk(&mut f, chunk, &key)?;
-        }
-
-        f.flush()?;
-        Ok(())
-    }
-
-    fn write_active(&mut self) -> () {
-        if let Err(e) = self.try_write_active() {
+    fn write_active_chunk(&self) -> () {
+        if let Err(e) = self.store.write_state(self.active_chunk()) {
             error!("Failed to write active chunk: {e}");
         }
     }

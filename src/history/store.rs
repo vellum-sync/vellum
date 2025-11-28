@@ -185,6 +185,77 @@ pub(super) fn write_chunk(f: &mut File, chunk: &Chunk, key: &[u8]) -> Result<()>
     Ok(())
 }
 
+#[derive(Debug)]
+pub(super) struct Store {
+    key: Vec<u8>,
+    state: PathBuf,
+}
+
+impl Store {
+    pub(super) fn new<S: AsRef<Path>>(state: S) -> Result<Self> {
+        let key = get_key()?;
+        let state_dir = state.as_ref();
+        fs::create_dir_all(state_dir)?;
+        let state = Path::new(state_dir).join("history.chunk");
+        Ok(Self { key, state })
+    }
+
+    pub(super) fn read_state(&self) -> Result<Vec<Chunk>> {
+        if !exists(&self.state)? {
+            debug!(
+                "active chunk file {:?} not found, skipping active chunks load",
+                self.state
+            );
+            return Ok(Vec::new());
+        }
+
+        let path = self.state.clone();
+
+        debug!("load active chunks from {path:?}");
+
+        let mut f = HistoryFile::open(path)?;
+
+        let chunk = match f.read()? {
+            Some(e) => e.decrypt(&self.key)?,
+            None => return Ok(Vec::new()),
+        };
+
+        debug!(
+            "found active chunk from {} with {} entries",
+            chunk.start,
+            chunk.entries.len()
+        );
+
+        let mut chunks = vec![chunk];
+
+        // there should only ever be one chunk in the active chunk file, but if
+        // there are any extra chunks, load them too.
+        while let Some(e) = f.read()? {
+            let chunk = e.decrypt(&self.key)?;
+            debug!(
+                "found active chunk from {} with {} entries",
+                chunk.start,
+                chunk.entries.len()
+            );
+            chunks.push(chunk);
+        }
+
+        Ok(chunks)
+    }
+
+    pub(super) fn write_state(&self, chunk: Option<&Chunk>) -> Result<()> {
+        let path = self.state.clone();
+        let mut f = File::create(path)?;
+
+        if let Some(chunk) = chunk {
+            write_chunk(&mut f, chunk, &self.key)?;
+        }
+
+        f.flush()?;
+        Ok(())
+    }
+}
+
 pub(super) struct HistoryFile {
     f: File,
     complete: bool,
