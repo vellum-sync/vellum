@@ -72,6 +72,7 @@ impl Ord for Entry {
             .cmp(&other.ts)
             .then(self.host.cmp(&other.host))
             .then(self.cmd.cmp(&other.cmd))
+            .then(self.path.cmp(&other.path))
     }
 }
 
