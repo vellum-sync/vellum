@@ -185,6 +185,71 @@ pub(super) fn write_chunk(f: &mut File, chunk: &Chunk, key: &[u8]) -> Result<()>
     Ok(())
 }
 
+pub(super) struct HistoryFile {
+    f: File,
+    complete: bool,
+}
+
+impl HistoryFile {
+    pub(super) fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Ok(Self {
+            f: File::open(path)?,
+            complete: false,
+        })
+    }
+
+    pub(super) fn read(&mut self) -> Result<Option<EncryptedChunk>> {
+        let mut buf = [0_u8; 8];
+        let mut read = 0;
+
+        while read < buf.len() {
+            let n = match self.f.read(&mut buf[read..]) {
+                Ok(n) => n,
+                Err(e) => match e.kind() {
+                    io::ErrorKind::Interrupted => continue,
+                    _ => return Err(e.into()),
+                },
+            };
+            if n == 0 {
+                return Ok(None);
+            };
+            read += n
+        }
+
+        let header = u64::from_be_bytes(buf);
+        let len = header & 0x00ffffffffffffff;
+
+        let mut data = vec![0u8; len as usize];
+        self.f.read_exact(&mut data)?;
+
+        let mut chunk: EncryptedChunk = rmp_serde::from_slice(&data)?;
+        chunk.version = ((header & 0xff00000000000000) >> 56) as u8;
+
+        Ok(Some(chunk))
+    }
+}
+
+impl Iterator for HistoryFile {
+    type Item = Result<EncryptedChunk>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.complete {
+            return None;
+        }
+        match self.read() {
+            Ok(Some(c)) => Some(Ok(c)),
+            Ok(None) => {
+                self.complete = true;
+                None
+            }
+            Err(e) => {
+                self.complete = true;
+                Some(Err(e))
+            }
+        }
+    }
+}
+
 mod v0 {
     use chrono::{DateTime, Utc};
     use serde::{Deserialize, Serialize};

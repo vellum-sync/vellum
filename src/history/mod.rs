@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, HashMap},
     fs::{self, File, exists},
-    io::{self, Read, Write},
+    io::Write,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -15,7 +15,7 @@ use crate::error::{Error, Result};
 
 mod store;
 
-use store::{Chunk, EncryptedChunk, write_chunk};
+use store::{Chunk, HistoryFile, write_chunk};
 pub use store::{Entry, generate_key, get_key};
 
 #[derive(Debug)]
@@ -464,69 +464,4 @@ fn collapse_entries(entries: Vec<Entry>) -> Entry {
     let last = entries.next_back().unwrap();
     first.cmd = last.cmd;
     first
-}
-
-struct HistoryFile {
-    f: File,
-    complete: bool,
-}
-
-impl HistoryFile {
-    fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
-        Ok(Self {
-            f: File::open(path)?,
-            complete: false,
-        })
-    }
-
-    fn read(&mut self) -> Result<Option<EncryptedChunk>> {
-        let mut buf = [0_u8; 8];
-        let mut read = 0;
-
-        while read < buf.len() {
-            let n = match self.f.read(&mut buf[read..]) {
-                Ok(n) => n,
-                Err(e) => match e.kind() {
-                    io::ErrorKind::Interrupted => continue,
-                    _ => return Err(e.into()),
-                },
-            };
-            if n == 0 {
-                return Ok(None);
-            };
-            read += n
-        }
-
-        let header = u64::from_be_bytes(buf);
-        let len = header & 0x00ffffffffffffff;
-
-        let mut data = vec![0u8; len as usize];
-        self.f.read_exact(&mut data)?;
-
-        let mut chunk: EncryptedChunk = rmp_serde::from_slice(&data)?;
-        chunk.version = ((header & 0xff00000000000000) >> 56) as u8;
-
-        Ok(Some(chunk))
-    }
-}
-
-impl Iterator for HistoryFile {
-    type Item = Result<EncryptedChunk>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.complete {
-            return None;
-        }
-        match self.read() {
-            Ok(Some(c)) => Some(Ok(c)),
-            Ok(None) => {
-                self.complete = true;
-                None
-            }
-            Err(e) => {
-                self.complete = true;
-                Some(Err(e))
-            }
-        }
-    }
 }
