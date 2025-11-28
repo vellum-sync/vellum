@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    fs::{self, File},
-    io::Write,
+    fs,
     path::Path,
     time::Duration,
 };
@@ -15,7 +14,7 @@ use crate::error::{Error, Result};
 
 mod store;
 
-use store::{Chunk, HistoryFile, Store, write_chunk};
+use store::{Chunk, HistoryFile, Store};
 pub use store::{Entry, generate_key, get_key};
 
 #[derive(Debug)]
@@ -50,15 +49,13 @@ impl History {
     }
 
     pub fn save<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.write(path, &self.host)?;
-        self.last_write = Utc::now();
+        self.write(path)?;
         self.write_active_chunk();
         Ok(())
     }
 
     pub fn sync<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.write(path.as_ref(), &self.host)?;
-        self.last_write = Utc::now();
+        self.write(path.as_ref())?;
         self.write_active_chunk();
         self.read(path.as_ref())
     }
@@ -150,12 +147,7 @@ impl History {
 
     pub fn rewrite_all_files<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         self.rebuild_chunks()?;
-        fs::remove_dir_all(path.as_ref())?;
-        // since we have removed the files, reset the last_write time
-        self.last_write = DateTime::UNIX_EPOCH;
-        for (host, _) in self.history.iter() {
-            self.write(path.as_ref(), host)?;
-        }
+        self.store.rewrite_all_chunks(path, &self.history)?;
         self.last_write = Utc::now();
         self.write_active_chunk();
         Ok(())
@@ -313,42 +305,17 @@ impl History {
         Ok(())
     }
 
-    fn write<P: AsRef<Path>>(&self, path: P, host: &str) -> Result<()> {
-        let key = get_key()?;
-
+    fn write<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         // First we need to make sure that there is actually anything to write.
-        let chunks = match self.history.get(host) {
+        let chunks = match self.history.get(&self.host) {
             Some(c) => c,
             None => return Ok(()),
         };
 
-        debug!("We have {} total chunks", chunks.len());
+        self.store
+            .write_chunks(path, &self.host, chunks, self.last_write)?;
 
-        let mut entries = 0;
-
-        // make sure host directory exists
-        let dir = Path::new(path.as_ref()).join(host);
-        fs::create_dir_all(&dir)?;
-
-        for (day, chunks) in chunks
-            .iter()
-            .filter(|chunk| chunk.start > self.last_write && !chunk.entries.is_empty())
-            .chunk_by(|chunk| format!("{}", chunk.start.format("%Y-%m-%d")))
-            .into_iter()
-        {
-            debug!("write chunks for {day}");
-            let mut f = File::options()
-                .append(true)
-                .create(true)
-                .open(Path::new(&dir).join(day))?;
-            for chunk in chunks {
-                entries += chunk.entries.len();
-                write_chunk(&mut f, chunk, &key)?;
-            }
-            f.flush()?;
-        }
-
-        debug!("Wrote total of {entries} new entries");
+        self.last_write = Utc::now();
 
         Ok(())
     }

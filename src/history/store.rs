@@ -254,6 +254,57 @@ impl Store {
         f.flush()?;
         Ok(())
     }
+
+    pub(super) fn write_chunks<P: AsRef<Path>>(
+        &self,
+        path: P,
+        host: &str,
+        chunks: &Vec<Chunk>,
+        last_write: DateTime<Utc>,
+    ) -> Result<()> {
+        debug!("We have {} total chunks", chunks.len());
+
+        let mut entries = 0;
+
+        // make sure host directory exists
+        let dir = Path::new(path.as_ref()).join(host);
+        fs::create_dir_all(&dir)?;
+
+        for (day, chunks) in chunks
+            .iter()
+            .filter(|chunk| chunk.start > last_write && !chunk.entries.is_empty())
+            .chunk_by(|chunk| format!("{}", chunk.start.format("%Y-%m-%d")))
+            .into_iter()
+        {
+            debug!("write chunks for {day}");
+            let mut f = File::options()
+                .append(true)
+                .create(true)
+                .open(Path::new(&dir).join(day))?;
+            for chunk in chunks {
+                entries += chunk.entries.len();
+                write_chunk(&mut f, chunk, &self.key)?;
+            }
+            f.flush()?;
+        }
+
+        debug!("Wrote total of {entries} new entries");
+
+        Ok(())
+    }
+
+    pub(super) fn rewrite_all_chunks<P: AsRef<Path>>(
+        &self,
+        path: P,
+        history: &HashMap<String, Vec<Chunk>>,
+    ) -> Result<()> {
+        fs::remove_dir_all(path.as_ref())?;
+        // since we have removed the files, use the epoch as the last_write time
+        for (host, chunks) in history.iter() {
+            self.write_chunks(path.as_ref(), host, chunks, DateTime::UNIX_EPOCH)?;
+        }
+        Ok(())
+    }
 }
 
 pub(super) struct HistoryFile {
