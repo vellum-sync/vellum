@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    fs,
     path::Path,
     time::Duration,
 };
@@ -184,12 +183,10 @@ impl History {
         let empty = self.history.is_empty();
 
         // read any new data from disk
-        for entry in fs::read_dir(&path)? {
-            let entry = entry?;
-            let file_name = entry.file_name();
-            let host = file_name.to_string_lossy();
-            if entry.path().is_dir() && (empty || host != self.host.as_str()) {
-                added |= self.read_host(entry.path(), host)?;
+        for entry in self.store.get_hosts(&path)? {
+            let (host, path) = entry?;
+            if empty || host != self.host {
+                added |= self.read_host(path, host)?;
             }
         }
 

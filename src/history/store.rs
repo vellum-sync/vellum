@@ -2,7 +2,7 @@ use std::{
     cmp::Ordering,
     collections::HashMap,
     env,
-    fs::{self, File, exists},
+    fs::{self, File, ReadDir, exists},
     io::{self, Read, Write},
     path::{Path, PathBuf},
 };
@@ -254,6 +254,10 @@ impl Store {
         Ok(())
     }
 
+    pub(super) fn get_hosts<P: AsRef<Path>>(&self, path: P) -> Result<HostIterator> {
+        HostIterator::new(path)
+    }
+
     pub(super) fn read_chunks<P: AsRef<Path>>(
         &self,
         path: P,
@@ -341,6 +345,38 @@ impl Store {
             self.write_chunks(path.as_ref(), host, chunks, DateTime::UNIX_EPOCH)?;
         }
         Ok(())
+    }
+}
+
+pub(super) struct HostIterator {
+    rd: ReadDir,
+}
+
+impl HostIterator {
+    fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Ok(Self {
+            rd: fs::read_dir(path)?,
+        })
+    }
+}
+
+impl Iterator for HostIterator {
+    type Item = Result<(String, PathBuf)>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let entry = match self.rd.next() {
+            Some(Ok(entry)) => entry,
+            Some(Err(e)) => return Some(Err(e.into())),
+            None => return None,
+        };
+        let path = entry.path();
+        if !path.is_dir() {
+            // skip non-directory entries
+            return self.next();
+        }
+        let file_name = entry.file_name();
+        let host = file_name.to_string_lossy();
+        return Some(Ok((host.into(), path)));
     }
 }
 
