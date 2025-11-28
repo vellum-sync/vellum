@@ -1,11 +1,10 @@
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     env,
     fs::{self, File, exists},
     io::{self, Read, Write},
     path::{Path, PathBuf},
-    time::Duration,
 };
 
 use aws_lc_rs::{
@@ -14,9 +13,9 @@ use aws_lc_rs::{
     rand,
 };
 use base64::{Engine, prelude::BASE64_STANDARD};
-use chrono::{DateTime, DurationRound, TimeDelta, Utc};
+use chrono::{DateTime, Utc};
 use itertools::Itertools;
-use log::{debug, error};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -124,8 +123,8 @@ const CURRENT_CHUNK_VERSION: u8 = 1;
 #[derive(Debug, Serialize, Deserialize)]
 pub(super) struct EncryptedChunk {
     #[serde(skip)]
-    pub version: u8,
-    pub start: DateTime<Utc>,
+    version: u8,
+    start: DateTime<Utc>,
     #[serde(with = "serde_bytes")]
     nonce: Vec<u8>,
     #[serde(with = "serde_bytes")]
@@ -145,7 +144,7 @@ impl EncryptedChunk {
         })
     }
 
-    pub(super) fn decrypt(mut self, key: &[u8]) -> Result<Chunk> {
+    fn decrypt(mut self, key: &[u8]) -> Result<Chunk> {
         let key = RandomizedNonceKey::new(&AES_256_GCM, key)?;
         let nonce = Nonce::try_assume_unique_for_key(&self.nonce)?;
         let data = key.open_in_place(nonce, Aad::empty(), &mut self.data)?;
@@ -253,6 +252,44 @@ impl Store {
 
         f.flush()?;
         Ok(())
+    }
+
+    pub(super) fn read_chunks<P: AsRef<Path>>(
+        &self,
+        path: P,
+        last_read: DateTime<Utc>,
+    ) -> Result<Vec<Chunk>> {
+        let mut chunks = Vec::new();
+        let last_read_day = format!("{}", last_read.format("%Y-%m-%d"));
+
+        for entry in fs::read_dir(&path)? {
+            let entry = entry?;
+            let day = entry.file_name();
+            if day.to_string_lossy().as_ref() < last_read_day.as_str() {
+                // skip any files that have already been read
+                continue;
+            }
+
+            // read chunks from the file, ignoring any that we have already
+            // read.
+            let mut new_chunks = HistoryFile::open(entry.path())?
+                .filter(|chunk| match chunk {
+                    Ok(c) => c.start > last_read,
+                    Err(_) => true,
+                })
+                .map(|chunk| match chunk {
+                    Ok(c) => c.decrypt(&self.key),
+                    Err(e) => Err(e),
+                })
+                .collect::<Result<Vec<Chunk>>>()?;
+
+            if !new_chunks.is_empty() {
+                // we only need to do anything if we read some new chunks
+                chunks.append(&mut new_chunks);
+            }
+        }
+
+        Ok(chunks)
     }
 
     pub(super) fn write_chunks<P: AsRef<Path>>(

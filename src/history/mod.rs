@@ -14,7 +14,7 @@ use crate::error::{Error, Result};
 
 mod store;
 
-use store::{Chunk, HistoryFile, Store};
+use store::{Chunk, Store};
 pub use store::{Entry, generate_key, get_key};
 
 #[derive(Debug)]
@@ -217,49 +217,24 @@ impl History {
         let host = host.into();
         debug!("read chunks for {host}");
 
-        let key = get_key()?;
-
         let last_read = self.last_read(&host);
-        let last_read_day = format!("{}", last_read.format("%Y-%m-%d"));
+        let new_chunks = self.store.read_chunks(path, last_read)?;
+
+        if new_chunks.len() == 0 {
+            debug!("added=false");
+            return Ok(false);
+        }
 
         let chunks = self.history.entry(host).or_default();
-
-        let mut added = false;
-        for entry in fs::read_dir(&path)? {
-            let entry = entry?;
-            let day = entry.file_name();
-            if day.to_string_lossy().as_ref() < last_read_day.as_str() {
-                // skip any files that have already been read
-                continue;
-            }
-
-            // read chunks from the file, ignoring any that we have already
-            // read.
-            let mut new_chunks = HistoryFile::open(entry.path())?
-                .filter(|chunk| match chunk {
-                    Ok(c) => c.start > last_read,
-                    Err(_) => true,
-                })
-                .map(|chunk| match chunk {
-                    Ok(c) => c.decrypt(&key),
-                    Err(e) => Err(e),
-                })
-                .collect::<Result<Vec<Chunk>>>()?;
-
-            if !new_chunks.is_empty() {
-                // we only need to do anything if we read some new chunks
-                chunks.append(&mut new_chunks);
-                added = true;
-            }
-        }
+        chunks.extend(new_chunks);
 
         // we might have read chunks out of order, but we want them in time
         // order, so sort them.
         chunks.sort_unstable_by_key(|chunk| chunk.start);
 
-        debug!("added={added}");
+        debug!("added=true");
 
-        Ok(added)
+        Ok(true)
     }
 
     fn read_active_chunk(&mut self) -> Result<()> {
