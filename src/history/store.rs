@@ -1,5 +1,4 @@
 use std::{
-    cmp::Ordering,
     collections::HashMap,
     env,
     fs::{self, File, ReadDir, exists},
@@ -7,165 +6,64 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use aws_lc_rs::{
-    aead::{AES_256_GCM, Aad, Nonce, RandomizedNonceKey},
-    cipher::AES_256_KEY_LEN,
-    rand,
-};
+use aws_lc_rs::{cipher::AES_256_KEY_LEN, rand};
 use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
 use log::{debug, warn};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::error::{Error, Result};
 
-#[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
-pub struct Entry {
-    pub id: Uuid,
-    pub ts: DateTime<Utc>,
-    pub host: String,
-    pub cmd: String,
-    pub path: String,
-    pub session: String,
-}
-
-impl Entry {
-    pub(super) fn new<H: Into<String>, C: Into<String>, P: Into<String>, S: Into<String>>(
-        host: H,
-        cmd: C,
-        path: P,
-        session: S,
-    ) -> Self {
-        Self::existing(Uuid::now_v7(), host, cmd, path, session)
-    }
-
-    pub(super) fn existing<
-        I: Into<Uuid>,
-        H: Into<String>,
-        C: Into<String>,
-        P: Into<String>,
-        S: Into<String>,
-    >(
-        id: I,
-        host: H,
-        cmd: C,
-        path: P,
-        session: S,
-    ) -> Self {
-        Self {
-            id: id.into(),
-            ts: Utc::now(),
-            host: host.into(),
-            cmd: cmd.into(),
-            path: path.into(),
-            session: session.into(),
-        }
-    }
-}
-
-impl Ord for Entry {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.ts
-            .cmp(&other.ts)
-            .then(self.host.cmp(&other.host))
-            .then(self.cmd.cmp(&other.cmd))
-            .then(self.path.cmp(&other.path))
-    }
-}
-
-impl PartialOrd for Entry {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
+pub use v1::Chunk;
+pub use v1::Entry;
 
 #[derive(Debug)]
-pub(super) struct Chunk {
-    pub start: DateTime<Utc>,
-    pub entries: Vec<Entry>,
-}
-
-impl Chunk {
-    pub(super) fn new() -> Self {
-        Self {
-            start: Utc::now(),
-            entries: Vec::new(),
-        }
-    }
-
-    pub(super) fn with_start(start: DateTime<Utc>) -> Self {
-        Self {
-            start,
-            entries: Vec::new(),
-        }
-    }
-
-    pub(super) fn push(&mut self, entry: Entry) {
-        self.entries.push(entry);
-    }
-
-    pub(super) fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    fn read(start: DateTime<Utc>, data: &[u8]) -> Result<Self> {
-        Ok(Self {
-            start,
-            entries: rmp_serde::from_slice(data)?,
-        })
-    }
-}
-
-const CURRENT_CHUNK_VERSION: u8 = 1;
-
-#[derive(Debug, Serialize, Deserialize)]
-struct EncryptedChunk {
-    #[serde(skip)]
-    version: u8,
-    start: DateTime<Utc>,
-    #[serde(with = "serde_bytes")]
-    nonce: Vec<u8>,
-    #[serde(with = "serde_bytes")]
-    data: Vec<u8>,
+enum EncryptedChunk {
+    V0(v0::EncryptedChunk),
+    V1(v1::EncryptedChunk),
 }
 
 impl EncryptedChunk {
-    fn read(version: u8, data: &[u8]) -> Result<Option<Self>> {
-        match version {
-            0 | CURRENT_CHUNK_VERSION => {
-                let mut chunk: EncryptedChunk = rmp_serde::from_slice(data)?;
-                chunk.version = version;
-                Ok(Some(chunk))
-            }
+    fn decode(version: u8, data: &[u8]) -> Result<Option<Self>> {
+        Ok(match version {
+            0 => Some(Self::V0(v0::EncryptedChunk::decode(data)?)),
+            1 => Some(Self::V1(v1::EncryptedChunk::decode(data)?)),
             v => {
                 warn!("Ignoring chunk of unknown version {v}");
-                Ok(None)
+                None
             }
+        })
+    }
+
+    fn version(&self) -> u8 {
+        match self {
+            Self::V0(_) => 0,
+            Self::V1(_) => 1,
+        }
+    }
+
+    fn start(&self) -> DateTime<Utc> {
+        match self {
+            Self::V0(v0) => v0.start,
+            Self::V1(v1) => v1.start,
+        }
+    }
+
+    fn encode(&self) -> Result<Vec<u8>> {
+        match self {
+            Self::V0(v0) => v0.encode(),
+            Self::V1(v1) => v1.encode(),
         }
     }
 
     fn encrypt(chunk: &Chunk, key: &[u8]) -> Result<Self> {
-        let key = RandomizedNonceKey::new(&AES_256_GCM, key)?;
-        let mut data = rmp_serde::to_vec(&chunk.entries)?;
-        let nonce = key.seal_in_place_append_tag(Aad::empty(), &mut data)?;
-        Ok(Self {
-            version: CURRENT_CHUNK_VERSION,
-            start: chunk.start,
-            nonce: nonce.as_ref().into(),
-            data,
-        })
+        Ok(Self::V1(v1::EncryptedChunk::encrypt(chunk, key)?))
     }
 
-    fn decrypt(mut self, key: &[u8]) -> Result<Chunk> {
-        let key = RandomizedNonceKey::new(&AES_256_GCM, key)?;
-        let nonce = Nonce::try_assume_unique_for_key(&self.nonce)?;
-        let data = key.open_in_place(nonce, Aad::empty(), &mut self.data)?;
-        match self.version {
-            0 => v0::read(self.start, data),
-            CURRENT_CHUNK_VERSION => Chunk::read(self.start, data),
-            v => Err(Error::Generic(format!("Invalid Chunk version: {v}"))),
+    fn decrypt(self, key: &[u8]) -> Result<Chunk> {
+        match self {
+            Self::V0(v0) => v0.decrypt(key),
+            Self::V1(v1) => v1.decrypt(key),
         }
     }
 }
@@ -190,9 +88,9 @@ pub fn get_key() -> Result<Vec<u8>> {
 
 pub(super) fn write_chunk(f: &mut File, chunk: &Chunk, key: &[u8]) -> Result<()> {
     let chunk = EncryptedChunk::encrypt(chunk, key)?;
-    let data = rmp_serde::to_vec(&chunk)?;
+    let data = chunk.encode()?;
     let len = data.len() as u64;
-    let header = len | ((chunk.version as u64) << 56);
+    let header = len | ((chunk.version() as u64) << 56);
     f.write_all(&header.to_be_bytes())?;
     f.write_all(&data)?;
     Ok(())
@@ -292,7 +190,7 @@ impl Store {
             // read.
             let mut new_chunks = HistoryFile::open(entry.path())?
                 .filter(|chunk| match chunk {
-                    Ok(c) => c.start > last_read,
+                    Ok(c) => c.start() > last_read,
                     Err(_) => true,
                 })
                 .map(|chunk| match chunk {
@@ -434,7 +332,7 @@ impl HistoryFile {
         let mut data = vec![0u8; len as usize];
         self.f.read_exact(&mut data)?;
 
-        match EncryptedChunk::read(version, &data)? {
+        match EncryptedChunk::decode(version, &data)? {
             Some(chunk) => Ok(Some(chunk)),
             None => self.read(),
         }
@@ -467,6 +365,8 @@ mod v0 {
     use serde::{Deserialize, Serialize};
     use uuid::Uuid;
 
+    use aws_lc_rs::aead::{AES_256_GCM, Aad, Nonce, RandomizedNonceKey};
+
     use crate::error::Result;
 
     use super::Chunk;
@@ -493,14 +393,177 @@ mod v0 {
         }
     }
 
-    pub(super) fn read(start: DateTime<Utc>, data: &[u8]) -> Result<Chunk> {
-        let entries: Vec<Entry> = rmp_serde::from_slice(data)?;
-        Ok(super::Chunk {
-            start,
-            entries: entries
-                .into_iter()
-                .map(|e| e.convert())
-                .collect::<Result<_>>()?,
-        })
+    #[derive(Debug, Serialize, Deserialize)]
+    pub(super) struct EncryptedChunk {
+        pub(super) start: DateTime<Utc>,
+        #[serde(with = "serde_bytes")]
+        nonce: Vec<u8>,
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
+    }
+
+    impl EncryptedChunk {
+        pub(super) fn decode(data: &[u8]) -> Result<Self> {
+            Ok(rmp_serde::from_slice(data)?)
+        }
+
+        pub(super) fn encode(&self) -> Result<Vec<u8>> {
+            Ok(rmp_serde::to_vec(&self)?)
+        }
+
+        pub(super) fn decrypt(mut self, key: &[u8]) -> Result<Chunk> {
+            let key = RandomizedNonceKey::new(&AES_256_GCM, key)?;
+            let nonce = Nonce::try_assume_unique_for_key(&self.nonce)?;
+            let data = key.open_in_place(nonce, Aad::empty(), &mut self.data)?;
+            let entries: Vec<Entry> = rmp_serde::from_slice(data)?;
+            Ok(Chunk {
+                start: self.start,
+                entries: entries
+                    .into_iter()
+                    .map(|e| e.convert())
+                    .collect::<Result<_>>()?,
+            })
+        }
+    }
+}
+
+mod v1 {
+    use chrono::{DateTime, Utc};
+    use serde::{Deserialize, Serialize};
+    use std::cmp::Ordering;
+    use uuid::Uuid;
+
+    use aws_lc_rs::aead::{AES_256_GCM, Aad, Nonce, RandomizedNonceKey};
+
+    use crate::error::Result;
+
+    #[derive(Debug, Eq, PartialEq, Clone, Serialize, Deserialize)]
+    pub struct Entry {
+        pub id: Uuid,
+        pub ts: DateTime<Utc>,
+        pub host: String,
+        pub cmd: String,
+        pub path: String,
+        pub session: String,
+    }
+
+    impl Entry {
+        pub fn new<H: Into<String>, C: Into<String>, P: Into<String>, S: Into<String>>(
+            host: H,
+            cmd: C,
+            path: P,
+            session: S,
+        ) -> Self {
+            Self::existing(Uuid::now_v7(), host, cmd, path, session)
+        }
+
+        pub fn existing<
+            I: Into<Uuid>,
+            H: Into<String>,
+            C: Into<String>,
+            P: Into<String>,
+            S: Into<String>,
+        >(
+            id: I,
+            host: H,
+            cmd: C,
+            path: P,
+            session: S,
+        ) -> Self {
+            Self {
+                id: id.into(),
+                ts: Utc::now(),
+                host: host.into(),
+                cmd: cmd.into(),
+                path: path.into(),
+                session: session.into(),
+            }
+        }
+    }
+
+    impl Ord for Entry {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            self.ts
+                .cmp(&other.ts)
+                .then(self.host.cmp(&other.host))
+                .then(self.cmd.cmp(&other.cmd))
+                .then(self.path.cmp(&other.path))
+        }
+    }
+
+    impl PartialOrd for Entry {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct Chunk {
+        pub start: DateTime<Utc>,
+        pub entries: Vec<Entry>,
+    }
+
+    impl Chunk {
+        pub fn new() -> Self {
+            Self {
+                start: Utc::now(),
+                entries: Vec::new(),
+            }
+        }
+
+        pub fn with_start(start: DateTime<Utc>) -> Self {
+            Self {
+                start,
+                entries: Vec::new(),
+            }
+        }
+
+        pub fn push(&mut self, entry: Entry) {
+            self.entries.push(entry);
+        }
+
+        pub fn len(&self) -> usize {
+            self.entries.len()
+        }
+    }
+
+    #[derive(Debug, Serialize, Deserialize)]
+    pub(super) struct EncryptedChunk {
+        pub(super) start: DateTime<Utc>,
+        #[serde(with = "serde_bytes")]
+        nonce: Vec<u8>,
+        #[serde(with = "serde_bytes")]
+        data: Vec<u8>,
+    }
+
+    impl EncryptedChunk {
+        pub(super) fn decode(data: &[u8]) -> Result<Self> {
+            Ok(rmp_serde::from_slice(data)?)
+        }
+
+        pub(super) fn encode(&self) -> Result<Vec<u8>> {
+            Ok(rmp_serde::to_vec(&self)?)
+        }
+
+        pub(super) fn encrypt(chunk: &Chunk, key: &[u8]) -> Result<Self> {
+            let key = RandomizedNonceKey::new(&AES_256_GCM, key)?;
+            let mut data = rmp_serde::to_vec(&chunk.entries)?;
+            let nonce = key.seal_in_place_append_tag(Aad::empty(), &mut data)?;
+            Ok(Self {
+                start: chunk.start,
+                nonce: nonce.as_ref().into(),
+                data,
+            })
+        }
+
+        pub(super) fn decrypt(mut self, key: &[u8]) -> Result<Chunk> {
+            let key = RandomizedNonceKey::new(&AES_256_GCM, key)?;
+            let nonce = Nonce::try_assume_unique_for_key(&self.nonce)?;
+            let data = key.open_in_place(nonce, Aad::empty(), &mut self.data)?;
+            Ok(Chunk {
+                start: self.start,
+                entries: rmp_serde::from_slice(data)?,
+            })
+        }
     }
 }
