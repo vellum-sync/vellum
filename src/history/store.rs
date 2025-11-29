@@ -121,7 +121,7 @@ impl Chunk {
 const CURRENT_CHUNK_VERSION: u8 = 1;
 
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) struct EncryptedChunk {
+struct EncryptedChunk {
     #[serde(skip)]
     version: u8,
     start: DateTime<Utc>,
@@ -394,20 +394,20 @@ impl Iterator for HostIterator {
     }
 }
 
-pub(super) struct HistoryFile {
+struct HistoryFile {
     f: File,
     complete: bool,
 }
 
 impl HistoryFile {
-    pub(super) fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
+    fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         Ok(Self {
             f: File::open(path)?,
             complete: false,
         })
     }
 
-    pub(super) fn read(&mut self) -> Result<Option<EncryptedChunk>> {
+    fn read(&mut self) -> Result<Option<EncryptedChunk>> {
         let mut buf = [0_u8; 8];
         let mut read = 0;
 
