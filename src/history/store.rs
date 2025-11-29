@@ -15,7 +15,7 @@ use aws_lc_rs::{
 use base64::{Engine, prelude::BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use itertools::Itertools;
-use log::debug;
+use log::{debug, warn};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -132,6 +132,20 @@ pub(super) struct EncryptedChunk {
 }
 
 impl EncryptedChunk {
+    fn read(version: u8, data: &[u8]) -> Result<Option<Self>> {
+        match version {
+            0 | CURRENT_CHUNK_VERSION => {
+                let mut chunk: EncryptedChunk = rmp_serde::from_slice(data)?;
+                chunk.version = version;
+                Ok(Some(chunk))
+            }
+            v => {
+                warn!("Ignoring chunk of unknown version {v}");
+                Ok(None)
+            }
+        }
+    }
+
     fn encrypt(chunk: &Chunk, key: &[u8]) -> Result<Self> {
         let key = RandomizedNonceKey::new(&AES_256_GCM, key)?;
         let mut data = rmp_serde::to_vec(&chunk.entries)?;
@@ -411,16 +425,19 @@ impl HistoryFile {
             read += n
         }
 
+        // chunk header is 8 bytes, 1st byte is chunk version, and remaining 7
+        // bytes are the data length.
         let header = u64::from_be_bytes(buf);
         let len = header & 0x00ffffffffffffff;
+        let version = ((header & 0xff00000000000000) >> 56) as u8;
 
         let mut data = vec![0u8; len as usize];
         self.f.read_exact(&mut data)?;
 
-        let mut chunk: EncryptedChunk = rmp_serde::from_slice(&data)?;
-        chunk.version = ((header & 0xff00000000000000) >> 56) as u8;
-
-        Ok(Some(chunk))
+        match EncryptedChunk::read(version, &data)? {
+            Some(chunk) => Ok(Some(chunk)),
+            None => self.read(),
+        }
     }
 }
 
