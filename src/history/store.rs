@@ -146,6 +146,7 @@ impl Store {
 
     pub(super) fn write_state(&self, chunk: Option<&Chunk>) -> Result<()> {
         let path = self.state.clone();
+        debug!("Write state to {path:?}");
         let mut f = HistoryFile::create(path, false)?;
 
         if let Some(chunk) = chunk {
@@ -294,7 +295,11 @@ impl HistoryFile {
 
     fn create<P: AsRef<Path>>(path: P, append: bool) -> Result<Self> {
         Ok(Self {
-            f: File::options().append(append).create(true).open(path)?,
+            f: File::options()
+                .write(true)
+                .append(append)
+                .create(true)
+                .open(path)?,
             complete: true,
         })
     }
