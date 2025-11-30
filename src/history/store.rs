@@ -86,16 +86,6 @@ pub fn get_key() -> Result<Vec<u8>> {
     Ok(key)
 }
 
-pub(super) fn write_chunk(f: &mut File, chunk: &Chunk, key: &[u8]) -> Result<()> {
-    let chunk = EncryptedChunk::encrypt(chunk, key)?;
-    let data = chunk.encode()?;
-    let len = data.len() as u64;
-    let header = len | ((chunk.version() as u64) << 56);
-    f.write_all(&header.to_be_bytes())?;
-    f.write_all(&data)?;
-    Ok(())
-}
-
 #[derive(Debug)]
 pub(super) struct Store {
     key: Vec<u8>,
@@ -156,10 +146,10 @@ impl Store {
 
     pub(super) fn write_state(&self, chunk: Option<&Chunk>) -> Result<()> {
         let path = self.state.clone();
-        let mut f = File::create(path)?;
+        let mut f = HistoryFile::create(path, false)?;
 
         if let Some(chunk) = chunk {
-            write_chunk(&mut f, chunk, &self.key)?;
+            f.write(&EncryptedChunk::encrypt(chunk, &self.key)?)?;
         }
 
         f.flush()?;
@@ -230,13 +220,10 @@ impl Store {
             .into_iter()
         {
             debug!("write chunks for {day}");
-            let mut f = File::options()
-                .append(true)
-                .create(true)
-                .open(Path::new(&dir).join(day))?;
+            let mut f = HistoryFile::create(Path::new(&dir).join(day), true)?;
             for chunk in chunks {
                 entries += chunk.entries.len();
-                write_chunk(&mut f, chunk, &self.key)?;
+                f.write(&EncryptedChunk::encrypt(chunk, &self.key)?)?;
             }
             f.flush()?;
         }
@@ -303,6 +290,26 @@ impl HistoryFile {
             f: File::open(path)?,
             complete: false,
         })
+    }
+
+    fn create<P: AsRef<Path>>(path: P, append: bool) -> Result<Self> {
+        Ok(Self {
+            f: File::options().append(append).create(true).open(path)?,
+            complete: true,
+        })
+    }
+
+    fn write(&mut self, chunk: &EncryptedChunk) -> Result<()> {
+        let data = chunk.encode()?;
+        let len = data.len() as u64;
+        let header = len | ((chunk.version() as u64) << 56);
+        self.f.write_all(&header.to_be_bytes())?;
+        self.f.write_all(&data)?;
+        Ok(())
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        Ok(self.f.flush()?)
     }
 
     fn read(&mut self) -> Result<Option<EncryptedChunk>> {
