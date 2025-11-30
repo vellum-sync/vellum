@@ -158,7 +158,8 @@ impl Store {
     }
 
     pub(super) fn get_hosts<P: AsRef<Path>>(&self, path: P) -> Result<HostIterator> {
-        HostIterator::new(path)
+        let hosts = path.as_ref().join("hosts");
+        HostIterator::new(hosts)
     }
 
     pub(super) fn read_chunks<P: AsRef<Path>>(
@@ -211,7 +212,7 @@ impl Store {
         let mut entries = 0;
 
         // make sure host directory exists
-        let dir = Path::new(path.as_ref()).join(host);
+        let dir = path.as_ref().join("hosts").join(host);
         fs::create_dir_all(&dir)?;
 
         for (day, chunks) in chunks
@@ -249,14 +250,18 @@ impl Store {
 }
 
 pub(super) struct HostIterator {
-    rd: ReadDir,
+    rd: Option<ReadDir>,
 }
 
 impl HostIterator {
     fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
-        Ok(Self {
-            rd: fs::read_dir(path)?,
-        })
+        if !path.as_ref().try_exists()? {
+            Ok(Self { rd: None })
+        } else {
+            Ok(Self {
+                rd: Some(fs::read_dir(path)?),
+            })
+        }
     }
 }
 
@@ -264,7 +269,11 @@ impl Iterator for HostIterator {
     type Item = Result<(String, PathBuf)>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let entry = match self.rd.next() {
+        let rd = match &mut self.rd {
+            Some(rd) => rd,
+            None => return None,
+        };
+        let entry = match rd.next() {
             Some(Ok(entry)) => entry,
             Some(Err(e)) => return Some(Err(e.into())),
             None => return None,

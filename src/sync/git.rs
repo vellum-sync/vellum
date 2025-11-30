@@ -32,13 +32,13 @@ pub struct Git {
 
 impl Git {
     pub(super) fn path(&self) -> PathBuf {
-        Path::new(&self.path).join("hosts")
+        self.path.clone()
     }
 
     fn existing(cfg: &Config) -> Result<Self> {
         let path = cfg.sync_path();
         let repo = Repository::open(&path)?;
-        fs::create_dir_all(Path::new(&path).join("hosts"))?;
+        fs::create_dir_all(&path)?;
         Ok(Self {
             path,
             cfg: cfg.clone(),
@@ -60,7 +60,6 @@ impl Git {
 
         let path = cfg.sync_path();
         let repo = builder.clone(&cfg.sync.url, &path)?;
-        fs::create_dir_all(Path::new(&path).join("hosts"))?;
         Ok(Self {
             path,
             cfg: cfg.clone(),
@@ -491,7 +490,7 @@ impl fmt::Debug for Git {
 impl Syncer for Git {
     fn refresh(&self) -> Result<PathBuf> {
         self.pull()?;
-        Ok(Path::new(&self.path).join("hosts"))
+        Ok(self.path.clone())
     }
 
     fn push_changes(&self, host: &str, force: bool) -> Result<()> {
@@ -620,7 +619,7 @@ impl<'a> GitGuard<'a> {
 impl LockedSyncer for GitGuard<'_> {
     fn refresh(&self) -> Result<PathBuf> {
         self.git.locked_pull()?;
-        Ok(Path::new(&self.git.path).join("hosts"))
+        Ok(self.git.path.clone())
     }
 
     fn push_changes(&self, host: &str) -> Result<()> {
