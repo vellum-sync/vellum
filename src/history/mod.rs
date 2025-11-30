@@ -94,9 +94,9 @@ impl History {
 
     pub fn load_entries(&mut self, entries: Vec<Entry>, all_hosts: bool) -> Result<usize> {
         if all_hosts {
-            return Err(Error::Generic(format!(
-                "Loading from all hosts is currently not implemented"
-            )));
+            return Err(Error::from_str(
+                "Loading from all hosts is currently not implemented",
+            ));
         }
 
         let mut current: BTreeMap<Uuid, String> = BTreeMap::new();
@@ -217,7 +217,7 @@ impl History {
         let last_read = self.last_read(&host);
         let new_chunks = self.store.read_chunks(path, last_read)?;
 
-        if new_chunks.len() == 0 {
+        if new_chunks.is_empty() {
             debug!("added=false");
             return Ok(false);
         }
@@ -240,15 +240,15 @@ impl History {
         // this function should never be called when there is already an active chunk.
         if let Some(last) = chunks.last() {
             if last.start > self.last_write {
-                return Err(Error::Generic(format!(
-                    "read_active_chunk called, but there is already an active chunk!"
-                )));
+                return Err(Error::from_str(
+                    "read_active_chunk called, but there is already an active chunk!",
+                ));
             }
         }
 
         let chunks = self.store.read_state()?;
 
-        if chunks.len() == 0 {
+        if chunks.is_empty() {
             // there was nothing read, so we are done.
             return Ok(());
         }
@@ -292,7 +292,7 @@ impl History {
         Ok(())
     }
 
-    fn write_active_chunk(&self) -> () {
+    fn write_active_chunk(&self) {
         if let Err(e) = self.store.write_state(self.active_chunk()) {
             error!("Failed to write active chunk: {e}");
         }

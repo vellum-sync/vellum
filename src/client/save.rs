@@ -34,10 +34,7 @@ pub fn save(cfg: &Config, args: SaveArgs) -> Result<()> {
     if !args.all_hosts {
         let host = cfg.hostname.to_string_lossy().to_string();
 
-        history = history
-            .into_iter()
-            .filter(|entry| entry.host == host)
-            .collect();
+        history.retain(|entry| entry.host == host);
     }
 
     serde_json::to_writer(writer, &history)?;

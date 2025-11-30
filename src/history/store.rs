@@ -202,7 +202,7 @@ impl Store {
         &self,
         path: P,
         host: &str,
-        chunks: &Vec<Chunk>,
+        chunks: &[Chunk],
         last_write: DateTime<Utc>,
     ) -> Result<()> {
         debug!("We have {} total chunks", chunks.len());
@@ -275,7 +275,7 @@ impl Iterator for HostIterator {
         }
         let file_name = entry.file_name();
         let host = file_name.to_string_lossy();
-        return Some(Ok((host.into(), path)));
+        Some(Ok((host.into(), path)))
     }
 }
 
