@@ -310,6 +310,7 @@ impl HistoryFile {
             f: File::options()
                 .write(true)
                 .append(append)
+                .truncate(!append)
                 .create(true)
                 .open(path)?,
             complete: true,
