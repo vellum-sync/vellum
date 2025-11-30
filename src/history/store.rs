@@ -162,7 +162,8 @@ impl Store {
         path: P,
     ) -> Result<impl Iterator<Item = Result<(String, PathBuf)>> + 'static> {
         let hosts = path.as_ref().join("hosts");
-        HostIterator::new(hosts)
+        let hosts_v1 = path.as_ref().join("hosts.v1");
+        Ok(HostIterator::new(hosts)?.chain(HostIterator::new(hosts_v1)?))
     }
 
     pub(super) fn read_chunks<P: AsRef<Path>>(
@@ -215,7 +216,7 @@ impl Store {
         let mut entries = 0;
 
         // make sure host directory exists
-        let dir = path.as_ref().join("hosts").join(host);
+        let dir = path.as_ref().join("hosts.v1").join(host);
         fs::create_dir_all(&dir)?;
 
         for (day, chunks) in chunks
