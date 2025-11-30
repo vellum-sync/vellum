@@ -162,7 +162,7 @@ impl Store {
         path: P,
     ) -> Result<impl Iterator<Item = Result<(String, PathBuf)>> + 'static> {
         let hosts = path.as_ref().join("hosts");
-        Ok(HostIterator::new(hosts)?)
+        HostIterator::new(hosts)
     }
 
     pub(super) fn read_chunks<P: AsRef<Path>>(
