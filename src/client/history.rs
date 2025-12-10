@@ -40,6 +40,14 @@ pub struct HistoryArgs {
     #[arg(short, long)]
     reverse: bool,
 
+    /// Combine the history command with a cd to the recorded path
+    #[arg(long)]
+    cd: bool,
+
+    /// Show the path where the command was run
+    #[arg(short = 'p', long)]
+    show_path: bool,
+
     /// Output the history information as JSON, instead of formatted for human
     /// reading.
     #[arg(short, long)]
@@ -61,6 +69,16 @@ pub struct HistoryArgs {
     last: isize,
 }
 
+impl HistoryArgs {
+    fn get_cmd(&self, entry: &Entry) -> String {
+        if self.cd && !entry.path.is_empty() {
+            format!("cd \"{}\" && {}", entry.path, entry.cmd)
+        } else {
+            entry.cmd.clone()
+        }
+    }
+}
+
 pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
     if args.fzf {
         fzf_history(cfg, args)
@@ -72,11 +90,13 @@ pub fn history(cfg: &Config, args: HistoryArgs) -> Result<()> {
 }
 
 fn fzf_history(cfg: &Config, args: HistoryArgs) -> Result<()> {
-    let filter = Filter::new(args.filter)?;
+    let filter = Filter::new(&args.filter)?;
     let mut conn = server::ensure_ready(cfg)?;
 
     let history = filter.enumerate_history_request(&mut conn)?;
     debug!("got filtered history with {} entries", history.len());
+
+    let index_size = (history.len() + 1).to_string().len().next_multiple_of(8);
 
     let mut seen = HashSet::new();
     for (index, entry) in history
@@ -84,7 +104,12 @@ fn fzf_history(cfg: &Config, args: HistoryArgs) -> Result<()> {
         .rev()
         .filter(|(_, entry)| seen.insert(&entry.cmd))
     {
-        print!("{}\t{}\x00", index + 1, entry.cmd);
+        let cmd = args.get_cmd(entry);
+        if args.show_path {
+            print!("{:<index_size$} {}\t{}\x00", index + 1, entry.path, cmd);
+        } else {
+            print!("{}\t{}\x00", index + 1, cmd);
+        }
     }
 
     Ok(())
@@ -108,7 +133,7 @@ fn json_history(cfg: &Config, args: HistoryArgs) -> Result<()> {
 }
 
 fn text_history(cfg: &Config, args: HistoryArgs) -> Result<()> {
-    let filter = Filter::new(args.filter)?;
+    let filter = Filter::new(&args.filter)?;
     let mut conn = server::ensure_ready(cfg)?;
 
     let history = filter.enumerate_history_request(&mut conn)?;
@@ -189,7 +214,7 @@ fn text_history(cfg: &Config, args: HistoryArgs) -> Result<()> {
         if args.id {
             print!("{:36}\t", entry.id);
         }
-        println!("{}", entry.cmd);
+        println!("{}", args.get_cmd(entry));
     }
 
     Ok(())

@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{borrow::Borrow, time::Duration};
 
 use chrono::{DateTime, Utc};
 use clap::ValueHint;
@@ -7,7 +7,7 @@ use crate::{api::Connection, error::Result, history::Entry};
 
 use super::Session;
 
-#[derive(clap::Args, Debug)]
+#[derive(clap::Args, Debug, Clone)]
 pub struct FilterArgs {
     /// Only include commands stored by the current session
     #[arg(short, long)]
@@ -57,13 +57,14 @@ pub struct Filter {
 }
 
 impl Filter {
-    pub fn new(args: FilterArgs) -> Result<Self> {
+    pub fn new<F: Borrow<FilterArgs>>(args: F) -> Result<Self> {
+        let args = args.borrow();
         let current_session = Session::get()?;
         let now = Utc::now();
         let min_age = args.min_age.map(|d| now - d);
         let max_age = args.max_age.map(|d| now - d);
         Ok(Self {
-            args,
+            args: args.clone(),
             min_age,
             max_age,
             current_session,
