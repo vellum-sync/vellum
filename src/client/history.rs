@@ -118,17 +118,20 @@ fn text_history(cfg: &Config, args: HistoryArgs) -> Result<()> {
     let host_size = history
         .iter()
         .fold(0, |max, (_, entry)| cmp::max(max, entry.host.len()));
+    let path_size = history
+        .iter()
+        .fold(0, |max, (_, entry)| cmp::max(max, entry.path.len()));
 
     if args.verbose && !args.no_headers {
         if args.id {
             println!(
-                "{:36}\t{:host_size$}\t{:35}\tCOMMAND",
-                "ID", "HOST", "TIMESTAMP"
+                "{:36}\t{:host_size$}\t{:35}\t{:path_size$}\tCOMMAND",
+                "ID", "HOST", "TIMESTAMP", "PATH"
             );
         } else {
             println!(
-                "{:index_size$}\t{:host_size$}\t{:35}\tCOMMAND",
-                "INDEX", "HOST", "TIMESTAMP"
+                "{:index_size$}\t{:host_size$}\t{:35}\t{:path_size$}\tCOMMAND",
+                "INDEX", "HOST", "TIMESTAMP", "PATH"
             );
         }
     }
@@ -161,18 +164,20 @@ fn text_history(cfg: &Config, args: HistoryArgs) -> Result<()> {
         if args.verbose {
             if args.id {
                 println!(
-                    "{:36}\t{:host_size$}\t{:35}\t{}",
+                    "{:36}\t{:host_size$}\t{:35}\t{:path_size$}\t{}",
                     entry.id,
                     entry.host,
                     entry.ts.to_rfc3339(),
+                    entry.path,
                     entry.cmd
                 );
             } else {
                 println!(
-                    "{:index_size$}\t{:host_size$}\t{:35}\t{}",
+                    "{:index_size$}\t{:host_size$}\t{:35}\t{:path_size$}\t{}",
                     index + 1,
                     entry.host,
                     entry.ts.to_rfc3339(),
+                    entry.path,
                     entry.cmd
                 );
             }
