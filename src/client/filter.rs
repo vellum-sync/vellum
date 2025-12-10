@@ -26,6 +26,11 @@ pub struct FilterArgs {
     #[arg(long, value_hint = ValueHint::Hostname)]
     host: Option<Vec<String>>,
 
+    /// Only include commands that were run in the specified path (can be
+    /// specified multiple times)
+    #[arg(long, value_hint = ValueHint::DirPath)]
+    path: Option<Vec<String>>,
+
     /// Only include commands that were stored more than the given duration ago
     #[arg(long, value_parser = humantime::parse_duration, value_name = "DURATION", value_hint = ValueHint::Other)]
     min_age: Option<Duration>,
@@ -81,6 +86,11 @@ impl Filter {
         }
         if let Some(host) = &self.args.host {
             if !host.contains(&entry.host) {
+                return false;
+            }
+        }
+        if let Some(path) = &self.args.path {
+            if !path.contains(&entry.path) {
                 return false;
             }
         }
