@@ -214,6 +214,9 @@ fn text_history(cfg: &Config, args: HistoryArgs) -> Result<()> {
         if args.id {
             print!("{:36}\t", entry.id);
         }
+        if args.show_path {
+            print!("{:path_size$}\t", entry.path);
+        }
         println!("{}", args.get_cmd(entry));
     }
 
