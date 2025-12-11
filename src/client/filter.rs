@@ -1,9 +1,13 @@
-use std::{borrow::Borrow, time::Duration};
+use std::{borrow::Borrow, env::current_dir, time::Duration};
 
 use chrono::{DateTime, Utc};
 use clap::ValueHint;
 
-use crate::{api::Connection, error::Result, history::Entry};
+use crate::{
+    api::Connection,
+    error::{Error, Result},
+    history::Entry,
+};
 
 use super::Session;
 
@@ -31,6 +35,10 @@ pub struct FilterArgs {
     #[arg(long, value_hint = ValueHint::DirPath)]
     path: Option<Vec<String>>,
 
+    /// Only include commands that were run in the current path
+    #[arg(long)]
+    current_path: bool,
+
     /// Only include commands that were stored more than the given duration ago
     #[arg(long, value_parser = humantime::parse_duration, value_name = "DURATION", value_hint = ValueHint::Other)]
     min_age: Option<Duration>,
@@ -54,6 +62,7 @@ pub struct Filter {
     min_age: Option<DateTime<Utc>>,
     max_age: Option<DateTime<Utc>>,
     current_session: Session,
+    current_path: String,
 }
 
 impl Filter {
@@ -63,11 +72,16 @@ impl Filter {
         let now = Utc::now();
         let min_age = args.min_age.map(|d| now - d);
         let max_age = args.max_age.map(|d| now - d);
+        let current_path = current_dir()?
+            .to_str()
+            .ok_or_else(|| Error::from_str("failed to convert current directory to string"))?
+            .to_owned();
         Ok(Self {
             args: args.clone(),
             min_age,
             max_age,
             current_session,
+            current_path,
         })
     }
 
@@ -92,6 +106,11 @@ impl Filter {
         }
         if let Some(path) = &self.args.path {
             if !path.contains(&entry.path) {
+                return false;
+            }
+        }
+        if self.args.current_path {
+            if entry.path != self.current_path {
                 return false;
             }
         }
